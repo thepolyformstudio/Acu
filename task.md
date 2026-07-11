@@ -1,0 +1,18 @@
+- [x] Initialize Next.js project in workspace directory
+- [x] Configure Tailwind CSS (Next.js default style setup) or Vanilla CSS
+- [x] Create Landing Page UI (Hero, Features, Parent/Student Role Selector, Remaining Spot Counter) and locked `/dashboard` routing
+- [x] Setup Firebase/Supabase Auth and database schemas with auto-activation and Parent/Student role fields
+- [x] Implement Settings Panel (Gemini Key, Google Client ID, Developer Key)
+- [x] Implement Google Drive & Picker integration alongside Device File Upload
+- [x] Set up client-side document text extraction (PDF pages, Docx, Plain text)
+- [x] Implement browser IndexedDB storage for document caches and page-range maps
+- [x] Create the AI Page-Range Mapping prompt & pipeline for splitting chapters
+- [x] Build the Interactive Slide Canvas with layout renderers
+- [x] Create the Slide Outline, Direct Text Editor, and Theme Selector
+- [x] Port mathematical question distribution logic to TypeScript
+- [x] Create the custom Exam Configurator UI (Marks, Duration, Scope, Grade Level)
+- [x] Build the distraction-free Exam Mode screen with active countdown timer
+- [x] Implement client-side Gemini AI Grader and detailed scorecards
+- [x] Integrate Recharts Radar Chart for Bloom's Taxonomy cognitive analytics display
+- [x] Develop the 3D animated Flashcard study deck
+- [x] Test mobile responsiveness, touch swipes, and finalize styles

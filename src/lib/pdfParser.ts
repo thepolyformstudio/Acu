@@ -1,0 +1,43 @@
+// Client-side PDF page-by-page text extractor using pdfjs-dist CDN worker
+export async function extractTextPageByPage(
+  file: File | Blob
+): Promise<{ pageNumber: number; text: string }[]> {
+  // Dynamically import pdfjs-dist client-side to prevent SSR ReferenceErrors (DOMMatrix) during compile
+  const pdfjsLib = await import('pdfjs-dist');
+  
+  // Configure worker using the local self-hosted public file to prevent network CDN issues
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+
+  const arrayBuffer = await file.arrayBuffer();
+  
+  // Load the document
+  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+  const pdf = await loadingTask.promise;
+  const numPages = pdf.numPages;
+  const pagesData: { pageNumber: number; text: string }[] = [];
+
+  for (let i = 1; i <= numPages; i++) {
+    try {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      
+      // Combine text items on the page
+      const pageText = textContent.items
+        .map((item: any) => item.str || '')
+        .join(' ');
+        
+      pagesData.push({
+        pageNumber: i,
+        text: pageText.trim()
+      });
+    } catch (err) {
+      console.error(`Error parsing page ${i}:`, err);
+      pagesData.push({
+        pageNumber: i,
+        text: ''
+      });
+    }
+  }
+
+  return pagesData;
+}

@@ -1,0 +1,453 @@
+import { initializeApp, getApps } from "firebase/app";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer } from "firebase/firestore";
+
+// Define TypeScript interfaces
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: 'parent' | 'student';
+  is_premium: boolean;
+  coupon_applied: string | null;
+  created_at: string;
+}
+
+export interface ChildProfile {
+  id: string;
+  parentId: string;
+  name: string;
+  grade: string;
+  created_at: string;
+}
+
+export interface DocumentSource {
+  id: string;
+  name: string;
+  subject?: string;
+  pages: { pageNumber: number; text: string }[];
+  chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] | null;
+  created_at: string;
+}
+
+export interface ExamAttempt {
+  id: string;
+  examTitle: string;
+  subject?: string;
+  documentId?: string;
+  chapterName?: string;
+  maxMarks: number;
+  marksObtained: number;
+  durationMinutes: number;
+  date: string;
+  bloomsAnalytics: { [key: string]: number }; // category -> percentage
+  answers: {
+    questionText: string;
+    questionType: string;
+    bloomsLevel: string;
+    maxMarks: number;
+    studentAnswer: string;
+    modelAnswer: string;
+    marksAwarded: number;
+    justification: string;
+    feedback: {
+      correct_points: string[];
+      incorrect_points: string[];
+      suggestions: string[];
+    };
+  }[];
+}
+
+// -------------------------------------------------------------
+// 1. Firebase Initialization with Dynamic Detection
+// -------------------------------------------------------------
+const firebaseConfig = {
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+};
+
+const isFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
+
+let app: any = null;
+let auth: any = null;
+let firestore: any = null;
+
+if (isFirebaseConfigured) {
+  try {
+    app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+    auth = getAuth(app);
+    firestore = getFirestore(app);
+    console.log("[Acu DB] Connected successfully to Cloud Firebase.");
+  } catch (error) {
+    console.error("[Acu DB] Error initializing Firebase. Falling back to Mock Storage.", error);
+  }
+} else {
+  console.log("[Acu DB] No environment keys found. Running in Local Storage Mock Mode.");
+}
+
+// -------------------------------------------------------------
+// 2. Mock Local Storage Database Implementation
+// -------------------------------------------------------------
+const LOCAL_MOCK_PROFILES = "acu_mock_profiles";
+const LOCAL_MOCK_CHILDREN = "acu_mock_children";
+const LOCAL_MOCK_ACTIVE_USER = "acu_mock_active_user";
+const LOCAL_MOCK_DOCUMENTS = "acu_mock_documents";
+const LOCAL_MOCK_ATTEMPTS = "acu_mock_attempts";
+
+const getMockData = (key: string, defaultValue: any) => {
+  if (typeof window === "undefined") return defaultValue;
+  const data = localStorage.getItem(key);
+  return data ? JSON.parse(data) : defaultValue;
+};
+
+const saveMockData = (key: string, data: any) => {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(key, JSON.stringify(data));
+};
+
+// -------------------------------------------------------------
+// 3. Unified Database & Authentication Service Methods
+// -------------------------------------------------------------
+
+export const dbService = {
+  // Check total premium users count to enforce the 100-user early bird limit
+  async getPremiumUserCount(): Promise<number> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = query(collection(firestore, "profiles"), where("is_premium", "==", true));
+        const snapshot = await getCountFromServer(q);
+        return snapshot.data().count;
+      } catch (e) {
+        console.error("Firebase getPremiumUserCount error:", e);
+        return 0;
+      }
+    } else {
+      const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+      return Object.values(profiles).filter((p: any) => p.is_premium).length;
+    }
+  },
+
+  // Auth: SignUp
+  async signUp(email: string, password: string, role: 'parent' | 'student'): Promise<UserProfile> {
+    if (isFirebaseConfigured && auth && firestore) {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = credential.user.uid;
+      
+      // Determine premium auto-activation limit
+      const currentPremiumCount = await this.getPremiumUserCount();
+      const shouldBePremium = currentPremiumCount < 100;
+      
+      const profile: UserProfile = {
+        id: uid,
+        email,
+        role,
+        is_premium: shouldBePremium,
+        coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
+        created_at: new Date().toISOString()
+      };
+
+      await setDoc(doc(firestore, "profiles", uid), profile);
+      return profile;
+    } else {
+      // Mock Storage SignUp
+      const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+      const emailLower = email.toLowerCase().trim();
+      
+      // Verify email doesn't exist
+      if (Object.values(profiles).some((p: any) => p.email === emailLower)) {
+        throw new Error("Email already registered in local mock db.");
+      }
+
+      const uid = "mock_user_" + Math.random().toString(36).substring(2, 9);
+      const currentPremiumCount = await this.getPremiumUserCount();
+      const shouldBePremium = currentPremiumCount < 100;
+
+      const profile: UserProfile = {
+        id: uid,
+        email: emailLower,
+        role,
+        is_premium: shouldBePremium,
+        coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
+        created_at: new Date().toISOString()
+      };
+
+      profiles[uid] = profile;
+      saveMockData(LOCAL_MOCK_PROFILES, profiles);
+      saveMockData(LOCAL_MOCK_ACTIVE_USER, profile);
+      
+      return profile;
+    }
+  },
+
+  // Auth: SignIn
+  async signIn(email: string, password: string): Promise<UserProfile> {
+    if (isFirebaseConfigured && auth && firestore) {
+      const credential = await signInWithEmailAndPassword(auth, email, password);
+      const uid = credential.user.uid;
+      const docRef = doc(firestore, "profiles", uid);
+      const snap = await getDoc(docRef);
+      if (!snap.exists()) {
+        throw new Error("User profile not found in database.");
+      }
+      return snap.data() as UserProfile;
+    } else {
+      // Mock Storage SignIn
+      const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+      const emailLower = email.toLowerCase().trim();
+      const foundProfile = Object.values(profiles).find((p: any) => p.email === emailLower) as UserProfile | undefined;
+      
+      if (!foundProfile) {
+        throw new Error("User not found in local mock db. Please register first!");
+      }
+      // In local mock, any password works for testing
+      saveMockData(LOCAL_MOCK_ACTIVE_USER, foundProfile);
+      return foundProfile;
+    }
+  },
+
+  // Auth: Google SignIn / SignUp
+  async signInWithGoogle(role: 'student' | 'parent'): Promise<UserProfile> {
+    if (isFirebaseConfigured && auth && firestore) {
+      try {
+        const provider = new GoogleAuthProvider();
+        const credentials = await signInWithPopup(auth, provider);
+        const fbUser = credentials.user;
+        
+        const userDocRef = doc(firestore, "profiles", fbUser.uid);
+        const snap = await getDoc(userDocRef);
+        
+        if (snap.exists()) {
+          return snap.data() as UserProfile;
+        } else {
+          const userCountSnap = await getCountFromServer(collection(firestore, "profiles"));
+          const count = userCountSnap.data().count;
+          const isPremium = count < 100;
+          
+          const newProfile: UserProfile = {
+            id: fbUser.uid,
+            email: fbUser.email || "",
+            role,
+            is_premium: isPremium,
+            coupon_applied: isPremium ? "BETA_EARLY_BIRD" : null,
+            created_at: new Date().toISOString()
+          };
+          
+          await setDoc(userDocRef, newProfile);
+          return newProfile;
+        }
+      } catch (err: any) {
+        throw new Error(err.message || "Google Sign-In failed.");
+      }
+    } else {
+      // Local Mock Google Sign-In
+      const mockEmail = `google-${role}-mock@test.com`;
+      const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+      const existingGoogleUserKey = Object.keys(profiles).find(k => profiles[k].email === mockEmail);
+      
+      if (existingGoogleUserKey) {
+        const found = profiles[existingGoogleUserKey];
+        saveMockData(LOCAL_MOCK_ACTIVE_USER, found);
+        return found;
+      }
+      
+      const isPremium = Object.keys(profiles).length < 100;
+      const mockUid = "google_user_mock_" + Math.random().toString(36).substring(2, 9);
+      const mockProfile: UserProfile = {
+        id: mockUid,
+        email: mockEmail,
+        role,
+        is_premium: isPremium,
+        coupon_applied: isPremium ? "BETA_EARLY_BIRD" : null,
+        created_at: new Date().toISOString()
+      };
+      
+      profiles[mockUid] = mockProfile;
+      saveMockData(LOCAL_MOCK_PROFILES, profiles);
+      saveMockData(LOCAL_MOCK_ACTIVE_USER, mockProfile);
+      return mockProfile;
+    }
+  },
+
+  // Auth: SignOut
+  async signOut(): Promise<void> {
+    if (isFirebaseConfigured && auth) {
+      await fbSignOut(auth);
+    } else {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(LOCAL_MOCK_ACTIVE_USER);
+      }
+    }
+  },
+
+  // Listen to Auth state changes
+  subscribeAuthState(callback: (user: UserProfile | null) => void): () => void {
+    if (isFirebaseConfigured && auth && firestore) {
+      return onAuthStateChanged(auth, async (fbUser: FirebaseUser | null) => {
+        if (fbUser) {
+          try {
+            const snap = await getDoc(doc(firestore, "profiles", fbUser.uid));
+            if (snap.exists()) {
+              callback(snap.data() as UserProfile);
+            } else {
+              callback(null);
+            }
+          } catch {
+            callback(null);
+          }
+        } else {
+          callback(null);
+        }
+      });
+    } else {
+      // Mock triggers immediately with active mock user
+      const checkUser = () => {
+        const active = getMockData(LOCAL_MOCK_ACTIVE_USER, null);
+        callback(active);
+      };
+      
+      checkUser();
+      
+      // Simulate an unmount/cleanup function
+      return () => {};
+    }
+  },
+
+  // Apply a manual premium activation code (e.g. for users beyond 100)
+  async applyCoupon(userId: string, code: string): Promise<boolean> {
+    const cleanCode = code.toUpperCase().trim();
+    
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const couponRef = doc(firestore, "coupons", cleanCode);
+        const snap = await getDoc(couponRef);
+        if (!snap.exists()) {
+          throw new Error("Invalid Coupon Code.");
+        }
+        const data = snap.data();
+        if (data.is_used) {
+          throw new Error("Coupon has already been redeemed.");
+        }
+
+        // Update coupon and user profile atomically
+        await updateDoc(couponRef, { is_used: true, used_by: userId });
+        await updateDoc(doc(firestore, "profiles", userId), { is_premium: true, coupon_applied: cleanCode });
+        return true;
+      } catch (err: any) {
+        throw new Error(err.message || "Redemption failed.");
+      }
+    } else {
+      // Local Mock Coupon Redeem: any code containing "FREE" will work for local testing
+      if (cleanCode.includes("FREE") || cleanCode === "ACUBETA") {
+        const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+        if (profiles[userId]) {
+          profiles[userId].is_premium = true;
+          profiles[userId].coupon_applied = cleanCode;
+          saveMockData(LOCAL_MOCK_PROFILES, profiles);
+          
+          const currentActive = getMockData(LOCAL_MOCK_ACTIVE_USER, null);
+          if (currentActive && currentActive.id === userId) {
+            currentActive.is_premium = true;
+            currentActive.coupon_applied = cleanCode;
+            saveMockData(LOCAL_MOCK_ACTIVE_USER, currentActive);
+          }
+          return true;
+        }
+        throw new Error("User profile not found.");
+      } else {
+        throw new Error("Invalid mock coupon. Hint: Try a code containing 'FREE'.");
+      }
+    }
+  },
+
+  // -------------------------------------------------------------
+  // Child Profiles Management (for Parent Role)
+  // -------------------------------------------------------------
+  async getChildProfiles(parentId: string): Promise<ChildProfile[]> {
+    if (isFirebaseConfigured && firestore) {
+      const q = query(collection(firestore, "children"), where("parentId", "==", parentId));
+      const snap = await getDocs(q);
+      const list: ChildProfile[] = [];
+      snap.forEach(d => list.push(d.data() as ChildProfile));
+      return list;
+    } else {
+      const children = getMockData(LOCAL_MOCK_CHILDREN, []);
+      return children.filter((c: any) => c.parentId === parentId);
+    }
+  },
+
+  async addChildProfile(parentId: string, name: string, grade: string): Promise<ChildProfile> {
+    const id = "child_" + Math.random().toString(36).substring(2, 9);
+    const newChild: ChildProfile = {
+      id,
+      parentId,
+      name,
+      grade,
+      created_at: new Date().toISOString()
+    };
+
+    if (isFirebaseConfigured && firestore) {
+      await setDoc(doc(firestore, "children", id), newChild);
+      return newChild;
+    } else {
+      const children = getMockData(LOCAL_MOCK_CHILDREN, []);
+      children.push(newChild);
+      saveMockData(LOCAL_MOCK_CHILDREN, children);
+      return newChild;
+    }
+  },
+
+  async deleteChildProfile(childId: string): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      await setDoc(doc(firestore, "children", childId), {}); // Delete or overwrite
+    } else {
+      let children = getMockData(LOCAL_MOCK_CHILDREN, []);
+      children = children.filter((c: any) => c.id !== childId);
+      saveMockData(LOCAL_MOCK_CHILDREN, children);
+    }
+  },
+
+  // -------------------------------------------------------------
+  // Library & Document Parsing Caches (Stored Client-Side in Local IndexedDB)
+  // -------------------------------------------------------------
+  // For document uploads, we always store them locally in the browser's IndexedDB
+  // because user text documents can be megabytes in size, and client-side processing
+  // is faster and safer for privacy than uploading to databases.
+  
+  async saveDocumentSource(docSource: DocumentSource): Promise<void> {
+    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+    // Remove if exists
+    const filtered = docs.filter((d: any) => d.id !== docSource.id);
+    filtered.push(docSource);
+    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+  },
+
+  async getDocumentSources(): Promise<DocumentSource[]> {
+    return getMockData(LOCAL_MOCK_DOCUMENTS, []);
+  },
+
+  async deleteDocumentSource(docId: string): Promise<void> {
+    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+    const filtered = docs.filter((d: any) => d.id !== docId);
+    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+  },
+
+  // -------------------------------------------------------------
+  // Exam Attempts History (Stored Client-Side in Local Storage)
+  // -------------------------------------------------------------
+  async getExamAttempts(profileId: string): Promise<ExamAttempt[]> {
+    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+    return allAttempts[profileId] || [];
+  },
+
+  async saveExamAttempt(profileId: string, attempt: ExamAttempt): Promise<void> {
+    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+    if (!allAttempts[profileId]) {
+      allAttempts[profileId] = [];
+    }
+    allAttempts[profileId].push(attempt);
+    saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+  }
+};

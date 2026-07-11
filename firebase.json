@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "site": "acudex",
+    "source": ".",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

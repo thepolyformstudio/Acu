@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { DocumentSource, ExamAttempt, dbService, UserProfile } from "@/lib/db";
 import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
+import { saveExamAttemptsToDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
   ChevronRight, Award, Timer, AlertCircle, Send, Check
@@ -88,10 +89,32 @@ function calculateQuestionDistribution(totalMarks: number, totalQuestions: numbe
 export default function AcuExam({ 
   documents, attempts, activeProfileId, onRefresh, user 
 }: AcuExamProps) {
-  const [selectedDoc, setSelectedDoc] = useState<DocumentSource | null>(null);
-  const [selectedChapterIdx, setSelectedChapterIdx] = useState<number>(-1);
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedChapterKey, setSelectedChapterKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+
+  // Build unique subject list from all documents
+  const subjectsList = [...new Set(documents.map(d => d.subject || "General"))];
+
+  // Flatten all chapters under the selected subject across all documents
+  type FlatChapter = { docId: string; chapIdx: number; name: string; summary: string; startPage: number; endPage: number; docName: string; docPageCount: number };
+  const flatChapters: FlatChapter[] = selectedSubject
+    ? documents
+        .filter(d => (d.subject || "General") === selectedSubject)
+        .flatMap(d =>
+          (d.chapterMap || []).map((chap, idx) => ({
+            docId: d.id,
+            chapIdx: idx,
+            name: chap.name,
+            summary: chap.summary,
+            startPage: chap.startPage,
+            endPage: chap.endPage,
+            docName: d.name,
+            docPageCount: d.pages.length,
+          }))
+        )
+    : [];
 
   // Exam Configurator Options
   const [examTitle, setExamTitle] = useState("Weekly Revision Test");
@@ -144,6 +167,13 @@ export default function AcuExam({
   }, [examRunning, secondsRemaining]);
 
   const handleGenerateExam = async () => {
+    // Find the selected chapter and its parent document
+    const chap = flatChapters.find(c => `${c.docId}_${c.chapIdx}` === selectedChapterKey);
+    if (!chap) {
+      alert("Please select a subject and chapter.");
+      return;
+    }
+    const selectedDoc = documents.find(d => d.id === chap.docId);
     if (!selectedDoc) return;
     
     let chapName = "";
@@ -163,12 +193,6 @@ export default function AcuExam({
         return;
       }
     } else {
-      if (selectedChapterIdx === -1) {
-        alert("Please select a chapter from the dropdown, or toggle 'Input Topic manually'.");
-        return;
-      }
-      const chap = selectedDoc.chapterMap?.[selectedChapterIdx];
-      if (!chap) return;
       chapName = chap.name;
       startP = chap.startPage;
       endP = chap.endPage;
@@ -329,6 +353,12 @@ export default function AcuExam({
       };
 
       await dbService.saveExamAttempt(activeProfileId, attemptResult);
+      // Async backup exam results to Google Drive (non-blocking)
+      if (isDriveSignedIn()) {
+        dbService.getExamAttempts(activeProfileId).then((all) => {
+          saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
+        });
+      }
       setScorecard(attemptResult);
       setActiveExam(null);
       onRefresh();
@@ -384,37 +414,46 @@ export default function AcuExam({
               {/* Inputs grids */}
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
                 <div className="space-y-1 text-left">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Document Scope</label>
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Subject</label>
                   <select
-                    value={selectedDoc?.id || ""}
+                    value={selectedSubject}
                     onChange={(e) => {
-                      const found = documents.find(d => d.id === e.target.value) || null;
-                      setSelectedDoc(found);
-                      setSelectedChapterIdx(-1);
+                      setSelectedSubject(e.target.value);
+                      setSelectedChapterKey("");
                     }}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
                   >
-                    <option value="">-- Choose document --</option>
-                    {documents.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name} {d.subject ? `(${d.subject})` : ""}</option>
-                    ))}
+                    <option value="">-- Choose subject --</option>
+                    {subjectsList.map((s) => {
+                      const count = documents
+                        .filter(d => (d.subject || "General") === s)
+                        .reduce((acc, d) => acc + (d.chapterMap?.length || 0), 0);
+                      return <option key={s} value={s}>{s} ({count} chapters)</option>;
+                    })}
                   </select>
                 </div>
 
                 {!manualChapterOverride ? (
                   <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapter Selection</label>
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapter</label>
                     <select
-                      disabled={!selectedDoc}
-                      value={selectedChapterIdx}
-                      onChange={(e) => setSelectedChapterIdx(Number(e.target.value))}
+                      disabled={!selectedSubject}
+                      value={selectedChapterKey}
+                      onChange={(e) => setSelectedChapterKey(e.target.value)}
                       className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer disabled:opacity-50"
                     >
-                      <option value={-1}>-- Choose chapter --</option>
-                      {selectedDoc?.chapterMap?.map((chap, idx) => (
-                        <option key={idx} value={idx}>{chap.name}</option>
+                      <option value="">-- Choose chapter --</option>
+                      {flatChapters.map((c) => (
+                        <option key={`${c.docId}_${c.chapIdx}`} value={`${c.docId}_${c.chapIdx}`}>
+                          {c.name}
+                        </option>
                       ))}
                     </select>
+                    {selectedChapterKey && (
+                      <p className="text-[10px] text-slate-600 mt-0.5">
+                        Source: {flatChapters.find(c => `${c.docId}_${c.chapIdx}` === selectedChapterKey)?.docName}
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <>
@@ -585,7 +624,7 @@ export default function AcuExam({
               {/* Confirm trigger */}
               <button
                 onClick={handleGenerateExam}
-                disabled={!selectedDoc || selectedChapterIdx === -1}
+                disabled={!selectedSubject || (!manualChapterOverride && !selectedChapterKey)}
                 className="px-6 py-3 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white rounded-xl text-xs font-bold tracking-wide transition-colors cursor-pointer flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
               >
                 <Play size={14} /> Generate and Start Exam

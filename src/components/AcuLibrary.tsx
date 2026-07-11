@@ -5,6 +5,7 @@ import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
 import { generateChapterMap } from "@/lib/gemini";
+import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Upload, FileText, Trash2, FolderOpen, Calendar, 
   Layers, RefreshCw, BookOpen, ShieldAlert,
@@ -111,6 +112,10 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         };
 
         await dbService.saveDocumentSource(newDoc);
+        // Async backup to Google Drive (non-blocking)
+        if (isDriveSignedIn()) {
+          saveDocumentToDrive(newDoc).catch(() => {});
+        }
       }
 
       setStatusMessage("Success! All files indexed.");
@@ -136,6 +141,10 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const handleDeleteDocument = async (docId: string) => {
     if (confirm("Are you sure you want to delete this document from your library?")) {
       await dbService.deleteDocumentSource(docId);
+      // Async delete from Google Drive (non-blocking)
+      if (isDriveSignedIn()) {
+        deleteDocumentFromDrive(docId).catch(() => {});
+      }
       onRefresh();
     }
   };
@@ -269,55 +278,56 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                     </div>
                   </div>
 
-                  {/* Expanded Content View */}
+                  {/* Expanded Content View — Chapter-level indexing */}
                   {isExpanded && (
                     <div className="p-4 space-y-4 bg-slate-950/30">
-                      {docs.map((doc) => (
-                        <div key={doc.id} className="p-4 rounded-xl border border-slate-850 bg-slate-950/50 space-y-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-lg bg-slate-900 border border-slate-850 text-slate-400">
-                                <FileText size={20} />
-                              </div>
-                              <div className="text-left">
-                                <h4 className="text-sm font-bold text-white leading-tight">{doc.name}</h4>
-                                <div className="flex items-center gap-3 text-[10px] text-slate-500 mt-1.5">
-                                  <span className="flex items-center gap-1"><Layers size={10} /> {doc.pages.length} Pages</span>
-                                  <span className="flex items-center gap-1"><Calendar size={10} /> {new Date(doc.created_at).toLocaleDateString()}</span>
-                                </div>
-                              </div>
-                            </div>
-                            
+                      {/* Compact file list with delete controls */}
+                      <div className="flex flex-wrap gap-2">
+                        {docs.map((doc) => (
+                          <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-400">
+                            <FileText size={12} className="shrink-0" />
+                            <span className="font-semibold text-slate-300 truncate max-w-[160px]">{doc.name}</span>
+                            <span className="text-slate-600">({doc.pages.length}p)</span>
                             <button 
                               onClick={() => handleDeleteDocument(doc.id)}
-                              className="p-2 rounded-lg bg-transparent hover:bg-red-950/20 text-slate-500 hover:text-red-400 hover:border-red-500/20 transition-colors"
+                              className="ml-1 p-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/20 transition-colors"
                             >
-                              <Trash2 size={14} />
+                              <Trash2 size={10} />
                             </button>
                           </div>
+                        ))}
+                      </div>
 
-                          {doc.chapterMap && doc.chapterMap.length > 0 && (
-                            <div className="border-t border-slate-900/60 pt-3 space-y-2 text-left">
-                              <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                                Mapped Lesson Chapters
-                              </div>
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                {doc.chapterMap.map((chap, idx) => (
-                                  <div key={idx} className="p-3 rounded-lg bg-slate-950/70 border border-slate-900/50 flex items-start justify-between gap-4">
-                                    <div>
-                                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-950/40 border border-violet-500/20 text-violet-400 font-semibold uppercase tracking-wider">
-                                        Pages {chap.startPage}–{chap.endPage}
-                                      </span>
-                                      <h5 className="text-xs font-bold text-white mt-1.5">{chap.name}</h5>
-                                      <p className="text-[10px] text-slate-500 mt-1 line-clamp-2">{chap.summary}</p>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                      {/* Flattened chapter list across all documents */}
+                      <div className="space-y-2">
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                          All Chapters ({totalChaps})
                         </div>
-                      ))}
+                        {docs.flatMap((doc) =>
+                          (doc.chapterMap || []).map((chap, cIdx) => ({
+                            docId: doc.id,
+                            docName: doc.name,
+                            cIdx,
+                            ...chap,
+                          }))
+                        ).map((chap) => (
+                          <div key={`${chap.docId}_${chap.cIdx}`} className="p-3 rounded-lg bg-slate-950/70 border border-slate-900/50 flex items-start justify-between gap-4 text-left">
+                            <div className="space-y-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-950/40 border border-violet-500/20 text-violet-400 font-semibold uppercase tracking-wider shrink-0">
+                                  Pages {chap.startPage}–{chap.endPage}
+                                </span>
+                                <span className="text-[10px] text-slate-600 truncate">{chap.docName}</span>
+                              </div>
+                              <h5 className="text-xs font-bold text-white">{chap.name}</h5>
+                              <p className="text-[10px] text-slate-500 line-clamp-2">{chap.summary}</p>
+                            </div>
+                          </div>
+                        ))}
+                        {totalChaps === 0 && (
+                          <p className="text-[10px] text-slate-600 text-center py-2">No chapters mapped in these files.</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>

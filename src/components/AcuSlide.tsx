@@ -9,6 +9,7 @@ import {
   generateTimeline, 
   generatePodcastScript 
 } from "@/lib/gemini";
+import { saveNotesToDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import PptxGenJS from "pptxgenjs";
 import AcuCard from "./AcuCard";
 import { 
@@ -140,6 +141,10 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       const generated = await generateSlideOutline(textSlices, chap.name);
       setSlides(generated);
       setActiveSlideIdx(0);
+      // Async backup to Google Drive
+      if (isDriveSignedIn()) {
+        saveNotesToDrive(selectedDoc.id, chap.name, "slides", generated).catch(() => {});
+      }
     } catch (err: any) {
       alert("Generation failed: " + (err.message || String(err)));
     } finally {
@@ -169,15 +174,19 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       if (tabType === "notes") {
         const data = await generateBriefingNotes(textSlices, chap.name);
         setNotes(data);
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "notes", data).catch(() => {});
       } else if (tabType === "faq") {
         const data = await generateFAQSheet(textSlices, chap.name);
         setFaq(data);
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "faq", data).catch(() => {});
       } else if (tabType === "timeline") {
         const data = await generateTimeline(textSlices, chap.name);
         setTimeline(data);
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "timeline", data).catch(() => {});
       } else if (tabType === "podcast") {
         const data = await generatePodcastScript(textSlices, chap.name);
         setPodcast(data);
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "podcast", data).catch(() => {});
       }
     } catch (err: any) {
       alert("Failed to generate: " + (err.message || String(err)));

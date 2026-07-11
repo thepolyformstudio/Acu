@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile } from "@/lib/db";
-import { Key, Globe, Gift, Check, ShieldAlert, Sparkles, RefreshCw } from "lucide-react";
+import { Key, Globe, Gift, Check, ShieldAlert, Sparkles, RefreshCw, Cloud, CloudOff, AlertTriangle } from "lucide-react";
+import { 
+  initGoogleDrive, signInToDrive, signOutFromDrive, isDriveSignedIn, 
+  isDriveConfigured, getDriveSyncStatus, onDriveSyncStatusChange 
+} from "@/lib/googleDrive";
 
 interface SettingsPanelProps {
   user: UserProfile;
@@ -21,13 +25,21 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
   
   const [keysSaved, setKeysSaved] = useState(false);
 
+  // Google Drive connection state
+  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveSyncStatus, setDriveSyncStatus] = useState(getDriveSyncStatus());
+
   useEffect(() => {
     // Load existing settings from localStorage
     if (typeof window !== "undefined") {
       setGeminiKey(localStorage.getItem("acu_gemini_api_key") || "");
       setClientId(localStorage.getItem("acu_google_client_id") || "");
       setDevKey(localStorage.getItem("acu_google_dev_key") || "");
+      setDriveConnected(isDriveSignedIn());
     }
+    const unsub = onDriveSyncStatusChange(setDriveSyncStatus);
+    return unsub;
   }, []);
 
   const handleSaveKeys = (e: React.FormEvent) => {
@@ -46,9 +58,36 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
       localStorage.removeItem("acu_gemini_api_key");
       localStorage.removeItem("acu_google_client_id");
       localStorage.removeItem("acu_google_dev_key");
+      signOutFromDrive();
       setGeminiKey("");
       setClientId("");
       setDevKey("");
+      setDriveConnected(false);
+    }
+  };
+
+  const handleConnectDrive = async () => {
+    if (!clientId.trim()) {
+      alert("Please save your Google OAuth Client ID first before connecting Drive.");
+      return;
+    }
+    setDriveConnecting(true);
+    try {
+      localStorage.setItem("acu_google_client_id", clientId.trim());
+      await initGoogleDrive();
+      const ok = await signInToDrive();
+      setDriveConnected(ok);
+    } catch (err: any) {
+      alert("Failed to connect Google Drive: " + (err.message || String(err)));
+    } finally {
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleDisconnectDrive = () => {
+    if (confirm("Disconnect Google Drive? Your local data will remain, but Drive sync will stop.")) {
+      signOutFromDrive();
+      setDriveConnected(false);
     }
   };
 
@@ -151,10 +190,26 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
             <div className="p-2 rounded-xl bg-violet-950/40 text-violet-400">
               <Globe size={20} />
             </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Google Drive Credentials</h3>
-              <p className="text-xs text-slate-500">Required if you want to import study materials directly from your Google Drive.</p>
+            <div className="flex-1">
+              <h3 className="text-base font-semibold text-white">Google Drive Backup</h3>
+              <p className="text-xs text-slate-500">Store your uploaded files, notes, and exam history in your own Google Drive.</p>
             </div>
+            {driveConnected && (
+              <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold uppercase">
+                <Cloud size={12} /> Connected
+              </div>
+            )}
+          </div>
+
+          {/* Privacy notice */}
+          <div className="p-3 rounded-xl border border-slate-850 bg-slate-950/40 text-left text-xs space-y-1.5">
+            <p className="text-slate-400">
+              <span className="font-semibold text-white">Your data stays yours.</span>{" "}
+              We do not store any of your uploaded file content or AI-generated notes on our servers. 
+              All study materials are kept in your browser&apos;s local storage. 
+              To preserve your data across devices and browser sessions, connect your Google Drive below — 
+              your files, notes, and exam history will be backed up to a private <code className="text-violet-300 font-mono text-[10px]">SmartGuide/</code> folder in your own Drive.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -184,7 +239,43 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 pt-2">
+          <div className="p-4 rounded-xl border border-slate-850 bg-slate-950/40 text-left text-xs space-y-2">
+            <h4 className="font-semibold text-white flex items-center gap-1.5">
+              <Sparkles size={14} className="text-violet-400" />
+              How to get your Google Drive credentials:
+            </h4>
+            <ol className="list-decimal list-inside space-y-2 text-slate-400">
+              <li>
+                Go to <a href="https://console.cloud.google.com/" target="_blank" rel="noreferrer" className="text-violet-400 hover:underline">Google Cloud Console</a>.
+              </li>
+              <li>
+                Sign in and create a <span className="text-white font-semibold">new project</span> (or select an existing one) from the project dropdown at the top of the page.
+              </li>
+              <li>
+                In the left sidebar, navigate to <span className="text-white font-semibold">APIs & Services &gt; Library</span>, search for <span className="text-white font-semibold">"Google Drive API"</span>, and click <span className="text-white font-semibold">Enable</span>.
+              </li>
+              <li>
+                Go to <span className="text-white font-semibold">APIs & Services &gt; Credentials</span> and click <span className="text-white font-semibold">"+ Create Credentials"</span>, then select <span className="text-white font-semibold">"OAuth client ID"</span>.
+              </li>
+              <li>
+                If prompted, configure the <span className="text-white font-semibold">OAuth consent screen</span> first (choose <span className="text-white font-semibold">External</span>, fill in the app name, and add your email as a test user), then return to create the OAuth client ID.
+              </li>
+              <li>
+                Choose <span className="text-white font-semibold">"Web application"</span> as the application type. Under <span className="text-white font-semibold">"Authorized JavaScript origins"</span>, add your site&apos;s URL (e.g. <code className="text-violet-300 font-mono text-[10px]">http://localhost:3000</code> for local testing).
+              </li>
+              <li>
+                Copy the <span className="text-white font-semibold">Client ID</span> (ends with <code className="text-violet-300 font-mono text-[10px]">.apps.googleusercontent.com</code>) and paste it into the field above.
+              </li>
+              <li>
+                Back on the <span className="text-white font-semibold">Credentials</span> page, click <span className="text-white font-semibold">"+ Create Credentials"</span> again and select <span className="text-white font-semibold">"API key"</span>. Copy the generated key and paste it into the <span className="text-white font-semibold">Developer Key</span> field above.
+              </li>
+            </ol>
+            <p className="text-[10px] text-slate-500 pt-1">
+              💡 Both credentials are stored locally in your browser and are never sent to any third-party server.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2 flex-wrap">
             <button
               type="submit"
               className="px-6 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
@@ -199,6 +290,41 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
             >
               Delete Keys
             </button>
+
+            {/* Drive Connect / Disconnect */}
+            <div className="ml-auto">
+              {driveConnected ? (
+                <div className="flex items-center gap-2">
+                  {driveSyncStatus.syncing && (
+                    <span className="text-[10px] text-violet-400 flex items-center gap-1">
+                      <RefreshCw className="animate-spin" size={10} /> Syncing...
+                    </span>
+                  )}
+                  {driveSyncStatus.error && (
+                    <span className="text-[10px] text-red-400 flex items-center gap-1" title={driveSyncStatus.error}>
+                      <AlertTriangle size={10} /> Sync error
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleDisconnectDrive}
+                    className="px-4 py-2.5 bg-transparent hover:bg-slate-900 text-slate-400 border border-slate-800 hover:border-slate-600 rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <CloudOff size={14} /> Disconnect Drive
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleConnectDrive}
+                  disabled={driveConnecting || !clientId.trim()}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-50 text-white rounded-xl text-xs font-medium transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  {driveConnecting ? <RefreshCw className="animate-spin" size={14} /> : <Cloud size={14} />}
+                  {driveConnecting ? "Connecting..." : "Connect Google Drive"}
+                </button>
+              )}
+            </div>
           </div>
         </form>
       </div>

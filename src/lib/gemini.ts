@@ -73,18 +73,17 @@ export async function generateChapterMap(
 export async function extractChapterTitle(
   firstPageText: string
 ): Promise<string> {
-  const apiKey = getGeminiApiKey();
-  if (!apiKey) {
-    throw new Error("Gemini API Key is missing. Please add your key in the Settings page.");
-  }
+  // Try Gemini first
+  try {
+    const apiKey = getGeminiApiKey();
+    if (apiKey) {
+      const ai = new GoogleGenerativeAI(apiKey);
+      const model = ai.getGenerativeModel({ 
+        model: "gemini-2.5-flash",
+        generationConfig: { temperature: 0.1 }
+      });
 
-  const ai = new GoogleGenerativeAI(apiKey);
-  const model = ai.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
-    generationConfig: { temperature: 0.1 }
-  });
-
-  const prompt =
+      const prompt =
 `You are given the first few pages of a textbook chapter. Identify the chapter title.
 
 Rules:
@@ -97,8 +96,29 @@ Output ONLY the chapter title. Nothing else. No quotes. No explanations.
 Text:
 ${firstPageText}`;
 
-  const result = await model.generateContent(prompt);
-  return result.response.text().trim();
+      const result = await model.generateContent(prompt);
+      const title = result.response.text().trim();
+      if (title) return title;
+    }
+  } catch {
+    // Gemini failed, fall through to heuristic
+  }
+
+  // Fallback heuristic
+  const pageTexts = firstPageText.split("\n\n");
+  for (const pageText of pageTexts) {
+    const t = pageText.trim();
+    if (!t || t.length < 20) continue;
+    const start = t.slice(0, 120);
+    // "9 Cell The Building Block of Life  9 1." → "Cell The Building Block of Life"
+    const m = start.match(/^\d+\s+(.+?)\s+\d+\s+\d+\./);
+    if (m) return m[1].trim().replace(/\s{2,}/g, " ");
+    // "Chapter 9: Cell - The Building Block of Life" → "Cell - The Building Block of Life"
+    const cm = start.match(/^(?:chapter|unit|lesson)\s+\d+\s*[-–:.]?\s*(.+?)\s*(?:$|\d)/i);
+    if (cm) return cm[1].trim().replace(/\s{2,}/g, " ");
+  }
+
+  return "";
 }
 
 // -------------------------------------------------------------

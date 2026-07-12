@@ -319,6 +319,7 @@ export default function Home() {
               onRefresh={refreshData}
               activeProfileId={activeProfileId}
               setActiveProfileId={setActiveProfileId}
+              onNavigateSettings={() => setActiveTab("settings")}
             />
           )}
           {activeTab === "library" && (

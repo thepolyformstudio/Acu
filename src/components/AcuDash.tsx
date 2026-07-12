@@ -4,8 +4,9 @@ import React, { useState, useEffect } from "react";
 import { dbService, UserProfile, DocumentSource, ExamAttempt, ChildProfile } from "@/lib/db";
 import { 
   Plus, RefreshCw, Users, Award, ChevronRight, ArrowLeft, 
-  FileText, CheckCircle2, AlertTriangle, HelpCircle, Calendar, ClipboardCheck, BookOpen
+  FileText, CheckCircle2, AlertTriangle, HelpCircle, Calendar, ClipboardCheck, BookOpen, Cloud, CloudOff
 } from "lucide-react";
+import { isDriveSignedIn } from "@/lib/googleDrive";
 
 interface AcuDashProps {
   user: UserProfile;
@@ -14,10 +15,11 @@ interface AcuDashProps {
   onRefresh: () => void;
   activeProfileId: string;
   setActiveProfileId: (id: string) => void;
+  onNavigateSettings?: () => void;
 }
 
 export default function AcuDash({ 
-  user, documents, attempts, onRefresh, activeProfileId, setActiveProfileId 
+  user, documents, attempts, onRefresh, activeProfileId, setActiveProfileId, onNavigateSettings
 }: AcuDashProps) {
   // Profiles (only relevant if role is Parent)
   const [children, setChildren] = useState<ChildProfile[]>([]);
@@ -157,6 +159,27 @@ export default function AcuDash({
 
   return (
     <div className="space-y-6">
+      {/* Drive backup warning banner */}
+      {!isDriveSignedIn() && documents.length > 0 && (
+        <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-950/10 flex items-start gap-3">
+          <CloudOff size={18} className="text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-xs text-slate-300">
+            <span className="font-semibold text-amber-400">Backup not configured.</span>{" "}
+            Your study data is stored in your browser and may be lost if you clear your cache.{" "}
+            {onNavigateSettings && (
+              <button
+                type="button"
+                onClick={onNavigateSettings}
+                className="text-violet-400 hover:underline cursor-pointer font-medium inline"
+              >
+                Connect Google Drive
+              </button>
+            )}
+            {" "}to back up your files and prevent data loss.
+          </div>
+        </div>
+      )}
+
       {/* -------------------------------------------------------------
           PARENT ROLE PROFILE MANAGEMENT
          ------------------------------------------------------------- */}

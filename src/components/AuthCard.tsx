@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile } from "@/lib/db";
-import { Mail, Lock, User, Check, RefreshCw, ExternalLink, KeyRound } from "lucide-react";
+import { Mail, Lock, User, Check, RefreshCw, ExternalLink, KeyRound, Cloud, CloudOff } from "lucide-react";
+import { signInToDrive, isDriveSignedIn } from "@/lib/googleDrive";
 
 interface AuthCardProps {
   onSuccess: (profile: UserProfile) => void;
@@ -21,6 +22,11 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [keySaved, setKeySaved] = useState(false);
+
+  // Drive onboarding step
+  const [showDriveStep, setShowDriveStep] = useState(false);
+  const [driveConnecting, setDriveConnecting] = useState(false);
+  const [driveConnected, setDriveConnected] = useState(false);
 
   // Early bird spots tracking
   const [premiumCount, setPremiumCount] = useState(0);
@@ -87,11 +93,38 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
     }
     setKeySaved(true);
     setTimeout(() => {
-      if (pendingProfile) onSuccess(pendingProfile);
+      if (!isDriveSignedIn()) {
+        setShowDriveStep(true);
+      } else {
+        if (pendingProfile) onSuccess(pendingProfile);
+      }
     }, 800);
   };
 
   const handleSkipOnboarding = () => {
+    if (!isDriveSignedIn()) {
+      setShowDriveStep(true);
+    } else {
+      if (pendingProfile) onSuccess(pendingProfile);
+    }
+  };
+
+  const handleConnectDrive = async () => {
+    setDriveConnecting(true);
+    try {
+      const ok = await signInToDrive();
+      setDriveConnected(ok);
+      if (ok && pendingProfile) {
+        setTimeout(() => onSuccess(pendingProfile), 600);
+      }
+    } catch {
+      // ignore
+    } finally {
+      setDriveConnecting(false);
+    }
+  };
+
+  const handleSkipDrive = () => {
     if (pendingProfile) onSuccess(pendingProfile);
   };
 
@@ -99,6 +132,70 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   // Onboarding Screen
   // ---------------------------------------------------------------------------
   if (showOnboarding && pendingProfile) {
+    if (showDriveStep) {
+      // Step 2: Google Drive connection
+      return (
+        <div className="w-full max-w-lg glass-panel p-8 rounded-2xl relative overflow-hidden">
+          <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-violet-600/10 blur-3xl pointer-events-none"></div>
+
+          <div className="text-center mb-6 relative">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold uppercase tracking-wider mb-4">
+              <Check size={12} /> Account Created
+            </div>
+            <h2 className="text-2xl font-display font-bold tracking-tight text-white mb-2">
+              Back up your data
+            </h2>
+            <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
+              Connect your Google Drive to securely back up your uploaded files, notes, and exam history.
+              Without it, your data is stored only in your browser and may be lost if you clear your cache.
+            </p>
+          </div>
+
+          {/* Drive connection card */}
+          <div className="mb-6 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center">
+            <Cloud size={48} className="mx-auto text-violet-400 mb-3" />
+            <h3 className="text-sm font-semibold text-white mb-1">Google Drive Backup</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Your files, notes, and exam history are synced to a private{" "}
+              <code className="text-violet-300 font-mono text-[10px]">Acudex/</code> folder in your Drive.
+            </p>
+
+            <button
+              type="button"
+              onClick={handleConnectDrive}
+              disabled={driveConnecting || driveConnected}
+              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer mb-2"
+            >
+              {driveConnecting ? (
+                <><RefreshCw className="animate-spin" size={16} /> Connecting...</>
+              ) : driveConnected ? (
+                <><Check size={16} /> Connected!</>
+              ) : (
+                <><Cloud size={16} /> Connect Google Drive</>
+              )}
+            </button>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={handleSkipDrive}
+              className="flex-1 px-4 py-2.5 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-600 rounded-xl text-sm font-medium transition-colors cursor-pointer"
+            >
+              Skip for now
+            </button>
+          </div>
+
+          <p className="mt-4 text-center text-[10px] text-slate-500 leading-relaxed">
+            You can connect Drive anytime from <span className="text-slate-400">Settings</span>.
+            <br />
+            Your data stays in your browser until you connect.
+          </p>
+        </div>
+      );
+    }
+
+    // Step 1: API key onboarding (existing)
     return (
       <div className="w-full max-w-lg glass-panel p-8 rounded-2xl relative overflow-hidden">
         <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-violet-600/10 blur-3xl pointer-events-none"></div>

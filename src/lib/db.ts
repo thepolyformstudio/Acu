@@ -213,8 +213,18 @@ export const dbService = {
     if (isFirebaseConfigured && auth && firestore) {
       try {
         const provider = new GoogleAuthProvider();
+        // Request Drive file scope so the token can be used for Drive backup
+        provider.addScope("https://www.googleapis.com/auth/drive.file");
         const credentials = await signInWithPopup(auth, provider);
         const fbUser = credentials.user;
+
+        // Capture Drive access token if available
+        const credential = GoogleAuthProvider.credentialFromResult(credentials);
+        if (credential?.accessToken) {
+          if (typeof window !== "undefined") {
+            localStorage.setItem("acu_drive_access_token", credential.accessToken);
+          }
+        }
         
         const userDocRef = doc(firestore, "profiles", fbUser.uid);
         const snap = await getDoc(userDocRef);

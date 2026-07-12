@@ -21,6 +21,7 @@ interface AcuLibraryProps {
 export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryProps) {
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
+  const [uploadMode, setUploadMode] = useState<"full_textbook" | "single_chapter">("full_textbook");
 
   // Subject selectors
   const [selectedSubjectType, setSelectedSubjectType] = useState("Science");
@@ -72,35 +73,75 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           throw new Error(`No readable text found in ${file.name}. If this is a scanned PDF, please convert it to selectable text.`);
         }
 
-        setStatusMessage(`[File ${fIdx + 1}/${files.length}] Mapping syllabus chapters for ${file.name}...`);
+        setStatusMessage(`[File ${fIdx + 1}/${files.length}] Indexing ${file.name}...`);
 
-        const tocPages = pages.slice(0, 5).map(p => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
         let chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] = [];
 
-        try {
-          chapterMap = await generateChapterMap(tocPages);
-        } catch (err) {
-          console.warn("Could not auto-generate chapter map, creating default pages mapping.", err);
-          chapterMap = [];
-          const pagesPerChapter = 10;
-          for (let i = 0; i < pages.length; i += pagesPerChapter) {
-            const chapNum = Math.floor(i / pagesPerChapter) + 1;
-            const endPage = Math.min(i + pagesPerChapter, pages.length);
-            chapterMap.push({
-              name: `Chapter ${chapNum} (Pages ${i+1} to ${endPage})`,
-              summary: "Syllabus reading block.",
-              startPage: i + 1,
-              endPage
-            });
-          }
-        }
+        if (uploadMode === "single_chapter") {
+          // Each file is one chapter — use filename as chapter name
+          const chapterName = file.name.replace(/\.[^/.]+$/, "");
+          chapterMap = [{
+            name: chapterName,
+            summary: "Chapter content.",
+            startPage: 1,
+            endPage: pages.length
+          }];
+        } else {
+          // Full textbook — find the Table of Contents and extract chapters
+          const maxScanPages = Math.min(40, pages.length);
+          let tocPageText = "";
 
-        // Normalize: Convert "Unit X" chapter names to "Chapter X" for consistent terminology
-        chapterMap = chapterMap.map((chap, idx) => ({
-          ...chap,
-          name: chap.name.replace(/^Unit\s+\d+/, `Chapter ${idx + 1}`),
-          summary: chap.summary || "Syllabus section."
-        }));
+          // Scan pages looking for the Table of Contents
+          for (let i = 0; i < maxScanPages; i++) {
+            const pageText = pages[i].text;
+            const lower = pageText.toLowerCase();
+            // Detect TOC by looking for "contents" heading or "unit/chapter" numbering with page references
+            const hasContentsHeading = /contents|index/i.test(lower);
+            const hasChapterUnitPattern = /(chapter|unit|section|lesson)\s+\d+/i.test(lower);
+            const hasPageNumberRef = /\d+\s*\.{2,}\s*\d+\s*$|\d+\s*–\s*\d+|\bpage?\s*\d+/im.test(pageText);
+
+            if ((hasContentsHeading && (hasChapterUnitPattern || hasPageNumberRef)) || 
+                (hasChapterUnitPattern && hasPageNumberRef && i > 2)) {
+              // Found TOC content — include this and surrounding pages
+              const start = Math.max(0, i - 1);
+              const end = Math.min(maxScanPages - 1, i + 3);
+              tocPageText = pages.slice(start, end + 1)
+                .map(p => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
+              break;
+            }
+          }
+
+          // Fallback: use first 5 pages if no TOC found
+          if (!tocPageText) {
+            tocPageText = pages.slice(0, 5)
+              .map(p => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
+          }
+
+          try {
+            chapterMap = await generateChapterMap(tocPageText);
+          } catch (err) {
+            console.warn("Could not auto-generate chapter map, creating default pages mapping.", err);
+            chapterMap = [];
+            const pagesPerChapter = 10;
+            for (let i = 0; i < pages.length; i += pagesPerChapter) {
+              const chapNum = Math.floor(i / pagesPerChapter) + 1;
+              const endPage = Math.min(i + pagesPerChapter, pages.length);
+              chapterMap.push({
+                name: `Chapter ${chapNum} (Pages ${i+1} to ${endPage})`,
+                summary: "Syllabus reading block.",
+                startPage: i + 1,
+                endPage
+              });
+            }
+          }
+
+          // Normalize: Convert "Unit X" chapter names to "Chapter X" for consistent terminology
+          chapterMap = chapterMap.map((chap, idx) => ({
+            ...chap,
+            name: chap.name.replace(/^Unit\s+\d+/, `Chapter ${idx + 1}`),
+            summary: chap.summary || "Syllabus section."
+          }));
+        }
 
         const newDoc: DocumentSource = {
           id: "doc_" + Math.random().toString(36).substring(2, 9),
@@ -204,6 +245,34 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
               />
             </div>
           )}
+
+          <div className="shrink-0 space-y-1">
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Upload Mode</label>
+            <div className="flex gap-1 p-0.5 bg-slate-950/50 border border-slate-800 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setUploadMode("full_textbook")}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                  uploadMode === "full_textbook"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Full Textbook
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode("single_chapter")}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                  uploadMode === "single_chapter"
+                    ? "bg-violet-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Single Chapter
+              </button>
+            </div>
+          </div>
 
           <div className="shrink-0">
             {uploading ? (

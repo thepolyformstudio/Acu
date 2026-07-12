@@ -45,3 +45,79 @@ The `single_chapter` code path in `AcuLibrary.tsx` was using `file.name.replace(
 - Debug whether `getGeminiApiKey()` returns a valid key for the user
 - Check browser console for errors during upload
 - Verify catch block fires vs. title extraction returning empty
+
+---
+
+## Session 2 — 2026-07-12 (Evening, 9:48 PM – 11:30 PM IST)
+
+### Trigger
+User `ejmultiverse@gmail.com` reported a `429 Quota Exceeded` error while generating MCQs on the production app (`acudex.web.app`). Screenshot provided: `ErrorScreenShot ej.jpg`.
+
+### Root Cause
+The user's Gemini API key is on the **Free Tier** which has strict limits:
+- **RPM (Requests Per Minute):** 5 requests/min
+- **RPD (Requests Per Day):** 20 requests/day
+- **TPM (Tokens Per Minute):** 250K tokens/min
+
+The user had exceeded both RPM (6/5) and RPD (23/20). The raw Google API error was being shown directly in an `alert()` popup, which was confusing and unhelpful.
+
+### Changes Made
+
+#### 1. Friendly 429 Error Messages (`src/lib/gemini.ts`)
+- Added `safeGenerateContent()` wrapper around all `model.generateContent()` calls
+- Catches 429/quota/rate-limit errors and throws a clean user-friendly message
+- Applied to all 10 generative functions (slides, exams, MCQs, notes, FAQ, timeline, podcast, grader, chapter map, chapter title extraction)
+- **Deployed:** Commit `c076d57`
+
+#### 2. Client-Side Rate Limiting (`src/lib/gemini.ts`)
+- Added `checkAndRecordRateLimit()` function that enforces:
+  - **RPM limit:** Max 5 requests in any rolling 60-second window
+  - **RPD limit:** Max 20 requests per day
+- Timestamps stored in `localStorage` key `acu_gemini_timestamps`
+- Daily counter stored in `localStorage` key `acu_gemini_daily_usage`
+- RPM error: *"You are generating too fast! Please wait a minute before trying again."*
+- RPD error: *"You have reached your daily limit of 20 requests. The quota will reset at [LOCAL TIME]. Come back then or upgrade your API tier!"*
+
+#### 3. Dynamic Local Reset Time (`src/lib/gemini.ts`)
+- Added `getLocalResetTime()` helper that calculates when Midnight Pacific Time occurs in the user's local timezone
+- Uses `Intl` timezone conversion (`America/Los_Angeles`) to compute exact local reset time
+- Displays like: *"at 01:30 PM (your local time)"*
+- Falls back to *"tomorrow"* if timezone conversion fails
+
+#### 4. Free Tier Toggle in Settings (`src/components/SettingsPanel.tsx`)
+- Added `isFreeTier` state and `dailyUsageCount` state
+- Persisted in `localStorage` as `acu_gemini_free_tier`
+- Rate limiting is bypassed when `isFreeTier` is `false` (for paid API keys)
+- Cleaned up on key deletion
+
+#### 5. Mock API Key for Tutorial Recording (`src/lib/gemini.ts`)
+- Special key `AIzaSyMockKeyForTutorial` triggers instant mock responses
+- Returns canned JSON data for all features: chapter maps, slides, exams, MCQs, briefing notes, FAQ, timeline, podcast, grading
+- Bypasses rate limiting and real API calls entirely
+- Purpose: Record tutorial videos without consuming quota
+
+### Deployments
+| Commit | Description |
+|--------|-------------|
+| `c076d57` | Rate limiting + friendly error messages |
+| `882aabb` | Mock API key for tutorial recording |
+
+Both deployed to Firebase Hosting: https://acudex.web.app
+
+### Tutorial Video Preparation
+- Storyboard script exists at `video-specs/registration-tutorial.md`
+- Detailed JSON scene spec at `video-specs/registration-tutorial.json`
+- Automated browser recording attempted but failed due to browser agent rate limits (unrelated to app)
+- Manual recording steps documented for 4 tutorial sections:
+  1. Registration + API key setup
+  2. File upload to Library
+  3. Study material generation (Slides, Notes, MCQs)
+  4. Exam generation, attempt, and grading
+
+### Files Changed
+- `src/lib/gemini.ts` — safeGenerateContent, rate limiting, mock key, local reset time
+- `src/components/SettingsPanel.tsx` — Free tier toggle, daily usage tracking
+
+### Git Status
+- All changes committed and pushed to `master` on `github.com/thepolyformstudio/Acu`
+- Latest commit: `882aabb`

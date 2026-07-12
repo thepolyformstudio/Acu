@@ -82,13 +82,14 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           let chapterName = file.name.replace(/\.[^/.]+$/, "");
           try {
             setStatusMessage(`[File ${fIdx + 1}/${files.length}] Extracting chapter title from ${file.name}...`);
-            const firstPageText = pages[0]?.text || "";
-            if (firstPageText) {
-              const extracted = await extractChapterTitle(firstPageText);
+            const titlePages = pages.slice(0, 3).map(p => p.text).filter(Boolean).join("\n\n");
+            if (titlePages) {
+              const extracted = await extractChapterTitle(titlePages);
               if (extracted) chapterName = extracted;
             }
-          } catch {
-            // Fallback to filename
+          } catch (e) {
+            setStatusMessage(`[File ${fIdx + 1}/${files.length}] No title found in content, using filename "${chapterName}".`);
+            console.warn("Chapter title extraction failed, falling back to filename:", e);
           }
           chapterMap = [{
             name: chapterName,

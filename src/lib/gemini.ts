@@ -88,7 +88,7 @@ export async function extractChapterTitle(
   });
 
   const prompt = `
-  Extract the chapter title from the following textbook page text.
+  Extract the chapter title from the following textbook text (first few pages).
   Return a JSON object with a single field "title" containing just the chapter name.
   If no clear chapter title is found, return {"title": ""}.
 
@@ -101,8 +101,10 @@ export async function extractChapterTitle(
     { text: prompt }
   ]);
 
-  const responseText = result.response.text();
-  const parsed = JSON.parse(responseText.trim());
+  const responseText = result.response.text().trim();
+  // Strip markdown code fences if present
+  const cleaned = responseText.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/m, "$1").trim();
+  const parsed = JSON.parse(cleaned);
   return parsed.title || "";
 }
 

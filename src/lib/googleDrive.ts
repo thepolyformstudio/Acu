@@ -1,77 +1,36 @@
 // Google Drive Integration Service
-// Uses Google Identity Services (GIS) for OAuth and gapi for Drive API operations.
+// Uses Firebase Auth (Google provider) to obtain an OAuth access token,
+// then calls Drive API v3 directly via fetch().
 // All user data (documents, exam attempts, notes) is saved to the user's own Google Drive.
 
-const GAPI_URL = "https://apis.google.com/js/api.js";
-const GIS_URL = "https://accounts.google.com/gsi/client";
-const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-const SCOPES = "https://www.googleapis.com/auth/drive.file";
+import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { getApps, initializeApp } from "firebase/app";
 
-const APP_FOLDER_NAME = "SmartGuide";
+const SCOPES = ["https://www.googleapis.com/auth/drive.file"];
+
+const APP_FOLDER_NAME = "Acudex";
 
 // Singleton state
-let gapiLoaded = false;
-let gisLoaded = false;
 let accessToken: string | null = null;
-let folderIdCache: { [name: string]: string } = {};
+const folderIdCache: { [name: string]: string } = {};
 
 // ---------------------------------------------------------------------------
-// Script loaders
+// Firebase Auth helper
 // ---------------------------------------------------------------------------
 
-function loadScript(url: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${url}"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = url;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load ${url}`));
-    document.head.appendChild(script);
-  });
+function getFirebaseAuth() {
+  const apps = getApps();
+  const app = apps.length > 0 ? apps[0] : initializeApp({});
+  return getAuth(app);
 }
 
 // ---------------------------------------------------------------------------
-// Public: check credentials
+// Public: check if signed in
 // ---------------------------------------------------------------------------
 
-export function getGoogleClientId(): string {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("acu_google_client_id") || "";
-  }
-  return "";
-}
-
-export function isDriveConfigured(): boolean {
-  return !!getGoogleClientId();
-}
-
-// ---------------------------------------------------------------------------
-// Public: initialization
-// ---------------------------------------------------------------------------
-
-let initPromise: Promise<void> | null = null;
-
-export function initGoogleDrive(): Promise<void> {
-  if (initPromise) return initPromise;
-  initPromise = (async () => {
-    const clientId = getGoogleClientId();
-    if (!clientId) return;
-
-    await Promise.all([loadScript(GAPI_URL), loadScript(GIS_URL)]);
-    gapiLoaded = true;
-    gisLoaded = true;
-
-    await new Promise<void>((resolve) => (window as any).gapi.load("client", () => resolve()));
-    await (window as any).gapi.client.init({
-      discoveryDocs: DISCOVERY_DOCS,
-    });
-  })();
-  return initPromise;
+export function isDriveSignedIn(): boolean {
+  if (typeof window === "undefined") return false;
+  return !!accessToken || !!localStorage.getItem("acu_drive_access_token");
 }
 
 // ---------------------------------------------------------------------------
@@ -79,55 +38,42 @@ export function initGoogleDrive(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function signInToDrive(): Promise<boolean> {
-  const clientId = getGoogleClientId();
-  if (!clientId || !gisLoaded) return false;
+  try {
+    const auth = getFirebaseAuth();
+    const provider = new GoogleAuthProvider();
+    SCOPES.forEach((s) => provider.addScope(s));
 
-  return new Promise<boolean>((resolve) => {
-    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
-      client_id: clientId,
-      scope: SCOPES,
-      callback: (response: any) => {
-        if (response.error) {
-          console.error("Drive OAuth error:", response);
-          resolve(false);
-          return;
-        }
-        accessToken = response.access_token as string;
-        localStorage.setItem("acu_drive_access_token", accessToken);
-        (window as any).gapi.client.setToken({ access_token: accessToken });
-        resolve(true);
-      },
-    });
-    tokenClient.requestAccessToken();
-  });
+    const result = await signInWithPopup(auth, provider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+
+    if (!credential?.accessToken) {
+      console.error("Drive sign-in: no access token returned");
+      return false;
+    }
+
+    accessToken = credential.accessToken;
+    localStorage.setItem("acu_drive_access_token", accessToken);
+    return true;
+  } catch (err: any) {
+    console.error("Drive sign-in failed:", err);
+    return false;
+  }
 }
 
 export function signOutFromDrive(): void {
-  const token = localStorage.getItem("acu_drive_access_token");
-  if (token && (window as any).google?.accounts?.oauth2) {
-    (window as any).google.accounts.oauth2.revoke(token, () => {});
-  }
   accessToken = null;
-  localStorage.removeItem("acu_drive_access_token");
-  if ((window as any).gapi?.client) {
-    (window as any).gapi.client.setToken(null);
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("acu_drive_access_token");
   }
-}
-
-export function isDriveSignedIn(): boolean {
-  return !!accessToken || !!localStorage.getItem("acu_drive_access_token");
 }
 
 /** Try to restore a previous session silently (no popup). */
 export async function tryRestoreDriveSession(): Promise<boolean> {
+  if (typeof window === "undefined") return false;
   const saved = localStorage.getItem("acu_drive_access_token");
   if (!saved) return false;
 
   accessToken = saved;
-  if ((window as any).gapi?.client) {
-    (window as any).gapi.client.setToken({ access_token: saved });
-  }
-  // Verify token is still valid by making a lightweight request
   try {
     const resp = await fetch("https://www.googleapis.com/drive/v3/about?fields=user", {
       headers: { Authorization: `Bearer ${saved}` },
@@ -296,7 +242,6 @@ export async function saveDocumentToDrive(doc: any): Promise<void> {
     const root = await getAppRootFolderId();
     const docsFolder = await findOrCreateFolder("Documents", root);
     const fileName = `${doc.id}.json`;
-    // Strip full page text to reduce size — store only metadata + chapter maps
     const lightweight = {
       id: doc.id,
       name: doc.name,
@@ -329,7 +274,6 @@ export async function loadDocumentsFromDrive(): Promise<any[]> {
   try {
     const root = await getAppRootFolderId();
     const docsFolder = await findOrCreateFolder("Documents", root);
-    // List all JSON files in the Documents folder
     const q = `'-${docsFolder}' in parents and trashed=false and mimeType='application/json'`;
     const resp = await fetch(
       `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=1000`,

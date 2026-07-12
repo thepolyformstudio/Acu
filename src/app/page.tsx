@@ -7,7 +7,7 @@ import {
   Sparkles, CheckCircle, Smartphone, ShieldCheck, 
   LogOut, Settings, BarChart2, BookOpen, Layers, HelpCircle, UserCheck, FolderOpen 
 } from "lucide-react";
-import { initGoogleDrive, tryRestoreDriveSession, isDriveConfigured } from "@/lib/googleDrive";
+import { tryRestoreDriveSession, isDriveSignedIn } from "@/lib/googleDrive";
 
 // Sub-components will be integrated directly
 import SettingsPanel from "@/components/SettingsPanel";
@@ -39,11 +39,9 @@ export default function Home() {
       setLoading(false);
     });
 
-    // Initialize Google Drive if credentials are configured
-    if (isDriveConfigured()) {
-      initGoogleDrive()
-        .then(() => tryRestoreDriveSession())
-        .catch(() => {});
+    // Restore Google Drive session if previously connected
+    if (isDriveSignedIn()) {
+      tryRestoreDriveSession().catch(() => {});
     }
 
     return () => unsubscribe();

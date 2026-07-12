@@ -60,19 +60,28 @@
   - All study materials stay in browser's local storage
   - Google Drive backup available for cross-device sync
 
+### 8. Hybrid Cloud Sync Architecture (NEW)
+- **Problem Solved:** Overcame Firestore 1MB document limit for massive textbooks while maintaining cross-device sync.
+- **Firestore Metadata:** Now serves exclusively as a lightning-fast index storing metadata (titles, timestamps, scores).
+- **Google Drive Payload:** Text payloads and exam answers are backed up and fetched directly from Google Drive.
+- **Legacy Support:** `db.ts` merges old localStorage objects with new Firestore objects, allowing legacy accounts to seamlessly transition.
+- **Mandatory Sync:** `AcuLibrary` now requires Google Drive to upload new textbooks, guaranteeing secure backup without hosting costs.
+- **On-Demand Fetching:** `AcuSlide` and `AcuExam` dynamically fetch the heavy payload from Drive only when a specific chapter is selected.
+
 ---
 
 ## Files Modified (12)
 
 | File | Session Changes |
 |---|---|
-| `src/lib/googleDrive.ts` | **NEW** — Drive OAuth + API service |
+| `src/lib/googleDrive.ts` | **NEW** — Drive OAuth + API service, `loadSingleDocumentFromDrive` |
 | `src/components/PricingPage.tsx` | **NEW** — Free vs Premium pricing |
-| `src/app/page.tsx` | Landing page rewrite, Pricing link, Drive init |
-| `src/components/AcuExam.tsx` | Subject→Chapter selection, Drive sync |
-| `src/components/AcuLibrary.tsx` | Flattened chapter view, Drive sync |
-| `src/components/AcuSlide.tsx` | Drive sync for generated content |
+| `src/app/page.tsx` | Landing page rewrite, Pricing link, Drive init, Profile filtering |
+| `src/components/AcuExam.tsx` | Subject→Chapter selection, Hybrid Drive Sync for Attempts |
+| `src/components/AcuLibrary.tsx` | Flattened chapter view, Enforced Drive Upload |
+| `src/components/AcuSlide.tsx` | Drive sync for generated content, dynamic payload fetching |
 | `src/components/SettingsPanel.tsx` | Drive Connect button, sync status, privacy notice, credential guide |
+| `src/lib/db.ts` | Firestore metadata strip logic, LocalStorage merge |
 | `src/app/globals.css` | Prior session |
 | `src/app/layout.tsx` | Prior session |
 | `package.json` | Prior session |
@@ -84,6 +93,7 @@
 ## Git History
 
 ```
+3c87a7b feat: Hybrid Cloud Sync Architecture
 b5d8ff9 feat: chapter-level indexing, Google Drive backup, pricing page, landing page rewrite
 ```
 

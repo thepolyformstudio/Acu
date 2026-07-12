@@ -222,6 +222,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                     try {
                       for (const doc of documents) {
                         await saveDocumentToDrive(doc);
+                        await dbService.saveDocumentSource(user?.id || "anonymous", doc);
                       }
                       if (btn) btn.innerText = 'Synced ✓';
                     } catch (e) {

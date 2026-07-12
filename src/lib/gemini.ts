@@ -31,8 +31,16 @@ JSON Schema:
 ]
 `;
 
+export interface BookMetadata {
+  name?: string;
+  isbn?: string;
+  publisher?: string;
+  edition?: string;
+}
+
 export async function generateChapterMap(
-  tocText: string
+  tocText: string,
+  metadata?: BookMetadata
 ): Promise<{ name: string; summary: string; startPage: number; endPage: number }[]> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
@@ -51,8 +59,13 @@ export async function generateChapterMap(
     }
   });
 
+  let metaContext = "";
+  if (metadata && (metadata.name || metadata.isbn || metadata.publisher)) {
+    metaContext = `\nBook Context: ${metadata.name || 'Unknown'} (ISBN: ${metadata.isbn || 'N/A'}, Publisher: ${metadata.publisher || 'N/A'}, Edition: ${metadata.edition || 'N/A'})\nUse this knowledge to accurately deduce the chapters if the text is messy.`;
+  }
+
   const prompt = `
-  Analyze this Table of Contents text and map chapters to page numbers:
+  Analyze this Table of Contents text and map chapters to page numbers:${metaContext}
   
   [TEXT]
   ${tocText}
@@ -70,8 +83,10 @@ export async function generateChapterMap(
 // -------------------------------------------------------------
 // 1b. Single Chapter Title Extraction (lightweight)
 // -------------------------------------------------------------
+// -------------------------------------------------------------
 export async function extractChapterTitle(
-  firstPageText: string
+  firstPageText: string,
+  metadata?: BookMetadata
 ): Promise<string> {
   // Try Gemini first
   try {
@@ -83,8 +98,14 @@ export async function extractChapterTitle(
         generationConfig: { temperature: 0.1 }
       });
 
+      let metaContext = "";
+      if (metadata && (metadata.name || metadata.isbn || metadata.publisher)) {
+        metaContext = `\nContext: This file is a chapter from the book "${metadata.name || 'Unknown'}" (ISBN: ${metadata.isbn || 'N/A'}, Publisher: ${metadata.publisher || 'N/A'}). Use your knowledge of this book's official Table of Contents to identify which chapter this text belongs to.`;
+      }
+
       const prompt =
 `You are given the first few pages of a textbook chapter. Identify the chapter title.
+${metaContext}
 
 Rules:
 - The chapter title is typically a bold heading or chapter name like "Chapter 9: Cell - The Building Block of Life" or just "Cell: The Building Block of Life".

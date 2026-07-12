@@ -4,12 +4,12 @@ import React, { useState } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
-import { generateChapterMap, extractChapterTitle } from "@/lib/gemini";
+import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
 import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Upload, FileText, Trash2, FolderOpen, Calendar, 
   Layers, RefreshCw, BookOpen, ShieldAlert,
-  ChevronRight, ChevronDown
+  ChevronRight, ChevronDown, Plus, X
 } from "lucide-react";
 
 interface AcuLibraryProps {
@@ -22,6 +22,20 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const [uploading, setUploading] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [uploadMode, setUploadMode] = useState<"full_textbook" | "single_chapter">("full_textbook");
+
+  // Metadata state
+  const [showMetadata, setShowMetadata] = useState(false);
+  const [metadata, setMetadata] = useState<BookMetadata>({ name: "", isbn: "", publisher: "", edition: "" });
+
+  // Manual Mapping state
+  const [manualMappingQueue, setManualMappingQueue] = useState<{
+    file: File;
+    pages: { pageNumber: number; text: string }[];
+  } | null>(null);
+  
+  const [manualChapters, setManualChapters] = useState<{name: string, startPage: number, endPage: number}[]>([
+    {name: "", startPage: 1, endPage: 1}
+  ]);
 
   // Subject selectors
   const [selectedSubjectType, setSelectedSubjectType] = useState("Science");
@@ -84,7 +98,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             setStatusMessage(`[File ${fIdx + 1}/${files.length}] Extracting chapter title from ${file.name}...`);
             const titlePages = pages.slice(0, 3).map(p => p.text).filter(Boolean).join("\n\n");
             if (titlePages) {
-              const extracted = await extractChapterTitle(titlePages);
+              const extracted = await extractChapterTitle(titlePages, metadata);
               if (extracted) {
                 chapterName = extracted;
                 setStatusMessage(`[File ${fIdx + 1}/${files.length}] Title found: "${chapterName}"`);
@@ -139,21 +153,14 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           }
 
           try {
-            chapterMap = await generateChapterMap(tocPageText);
+            chapterMap = await generateChapterMap(tocPageText, metadata);
+            if (!chapterMap || chapterMap.length === 0) throw new Error("Empty TOC generated.");
           } catch (err) {
-            console.warn("Could not auto-generate chapter map, creating default pages mapping.", err);
-            chapterMap = [];
-            const pagesPerChapter = 10;
-            for (let i = 0; i < pages.length; i += pagesPerChapter) {
-              const chapNum = Math.floor(i / pagesPerChapter) + 1;
-              const endPage = Math.min(i + pagesPerChapter, pages.length);
-              chapterMap.push({
-                name: `Chapter ${chapNum} (Pages ${i+1} to ${endPage})`,
-                summary: "Syllabus reading block.",
-                startPage: i + 1,
-                endPage
-              });
-            }
+            console.warn("Could not auto-generate chapter map. Prompting manual mapping.", err);
+            setManualMappingQueue({ file, pages });
+            setUploading(false);
+            setStatusMessage("");
+            return; // Wait for user to manually map
           }
 
           // Normalize: Convert "Unit X" chapter names to "Chapter X" for consistent terminology
@@ -198,6 +205,42 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       setStatusMessage("");
       onRefresh();
     }
+  };
+
+  const handleSaveManualMapping = async () => {
+    if (!manualMappingQueue) return;
+    
+    // Filter out invalid chapters
+    const validChapters = manualChapters
+      .filter(c => c.name.trim() !== "")
+      .map(c => ({
+        name: c.name,
+        summary: "Manually mapped section.",
+        startPage: c.startPage,
+        endPage: c.endPage
+      }));
+
+    const newDoc: DocumentSource = {
+      id: "doc_" + Math.random().toString(36).substring(2, 9),
+      name: manualMappingQueue.file.name,
+      subject: activeSubject || "General",
+      pages: manualMappingQueue.pages,
+      chapterMap: validChapters.length > 0 ? validChapters : [{ name: manualMappingQueue.file.name.replace(/\.[^/.]+$/, ""), summary: "Full document", startPage: 1, endPage: manualMappingQueue.pages.length }],
+      created_at: new Date().toISOString()
+    };
+
+    await dbService.saveDocumentSource(newDoc);
+    if (isDriveSignedIn()) {
+      saveDocumentToDrive(newDoc).catch(() => {});
+    }
+
+    setManualMappingQueue(null);
+    setManualChapters([{name: "", startPage: 1, endPage: 1}]);
+    
+    if (activeSubject) {
+      setExpandedSubjects(prev => ({ ...prev, [activeSubject]: true }));
+    }
+    onRefresh();
   };
 
   const handleDeleteDocument = async (docId: string) => {
@@ -315,6 +358,64 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             )}
           </div>
         </div>
+
+        {/* Book Metadata Accordion */}
+        <div className="w-full mt-4 bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+          <button 
+            onClick={() => setShowMetadata(!showMetadata)}
+            className="w-full flex items-center justify-between p-3 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/50 transition-colors cursor-pointer"
+          >
+            <span className="flex items-center gap-2">
+              <BookOpen size={14} /> Help us identify your book (Optional)
+            </span>
+            {showMetadata ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </button>
+          
+          {showMetadata && (
+            <div className="p-4 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-900/20">
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Book Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. NCERT Science" 
+                  value={metadata.name || ''} 
+                  onChange={(e) => setMetadata({...metadata, name: e.target.value})}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">ISBN</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 978-81-7450-482-3" 
+                  value={metadata.isbn || ''} 
+                  onChange={(e) => setMetadata({...metadata, isbn: e.target.value})}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Publisher Name</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Oswaal" 
+                  value={metadata.publisher || ''} 
+                  onChange={(e) => setMetadata({...metadata, publisher: e.target.value})}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase">Edition</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. 2024" 
+                  value={metadata.edition || ''} 
+                  onChange={(e) => setMetadata({...metadata, edition: e.target.value})}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
+                />
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Free Tier Limit Indicator */}
@@ -426,6 +527,103 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           </div>
         )}
       </div>
+
+      {/* Manual Mapping Modal */}
+      {manualMappingQueue && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div>
+                <h3 className="text-lg font-bold text-white">Manual Chapter Mapping</h3>
+                <p className="text-xs text-slate-400 mt-1">We couldn't automatically detect the chapters for <strong className="text-violet-300">{manualMappingQueue.file.name}</strong>.</p>
+              </div>
+              <button onClick={() => setManualMappingQueue(null)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+              {manualChapters.map((chap, idx) => (
+                <div key={idx} className="flex gap-3 items-start">
+                  <div className="flex-1 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Chapter Title</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Chapter 1: Introduction" 
+                      value={chap.name} 
+                      onChange={(e) => {
+                        const newChaps = [...manualChapters];
+                        newChaps[idx].name = e.target.value;
+                        setManualChapters(newChaps);
+                      }}
+                      className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
+                    />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Start Pg</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={chap.startPage} 
+                      onChange={(e) => {
+                        const newChaps = [...manualChapters];
+                        newChaps[idx].startPage = parseInt(e.target.value) || 1;
+                        setManualChapters(newChaps);
+                      }}
+                      className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none text-center"
+                    />
+                  </div>
+                  <div className="w-24 space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">End Pg</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={chap.endPage} 
+                      onChange={(e) => {
+                        const newChaps = [...manualChapters];
+                        newChaps[idx].endPage = parseInt(e.target.value) || 1;
+                        setManualChapters(newChaps);
+                      }}
+                      className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none text-center"
+                    />
+                  </div>
+                  <button 
+                    onClick={() => {
+                      setManualChapters(manualChapters.filter((_, i) => i !== idx));
+                    }}
+                    className="mt-6 p-2 text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+              
+              <button 
+                onClick={() => setManualChapters([...manualChapters, {name: "", startPage: 1, endPage: 1}])}
+                className="flex items-center gap-2 text-xs font-semibold text-violet-400 hover:text-violet-300 py-2 transition-colors cursor-pointer"
+              >
+                <Plus size={14} /> Add Another Chapter
+              </button>
+            </div>
+            
+            <div className="p-6 border-t border-slate-800 bg-slate-950/80 flex justify-end gap-3">
+              <button 
+                onClick={() => setManualMappingQueue(null)}
+                className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={handleSaveManualMapping}
+                className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/20 transition-colors cursor-pointer"
+              >
+                Save Document
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

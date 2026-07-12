@@ -23,8 +23,10 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const [statusMessage, setStatusMessage] = useState("");
   const [uploadMode, setUploadMode] = useState<"full_textbook" | "single_chapter">("full_textbook");
 
+  // Staging state
+  const [stagedFiles, setStagedFiles] = useState<File[] | null>(null);
+
   // Metadata state
-  const [showMetadata, setShowMetadata] = useState(false);
   const [metadata, setMetadata] = useState<BookMetadata>({ name: "", isbn: "", publisher: "", edition: "" });
 
   // Manual Mapping state
@@ -52,7 +54,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     }));
   };
 
-  const handleDeviceUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -62,6 +64,15 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       return;
     }
 
+    setStagedFiles(Array.from(files));
+    e.target.value = '';
+  };
+
+  const handleProcessStagedFiles = async () => {
+    if (!stagedFiles || stagedFiles.length === 0) return;
+    const files = stagedFiles;
+    
+    setStagedFiles(null);
     setUploading(true);
 
     try {
@@ -351,7 +362,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                     type="file" 
                     accept=".pdf,.docx,.txt" 
                     multiple
-                    onChange={handleDeviceUpload}
+                    onChange={handleFileSelect}
                     className="hidden" 
                   />
                 </label>
@@ -360,63 +371,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           </div>
         </div>
 
-        {/* Book Metadata Accordion */}
-        <div className="w-full bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
-          <button 
-            onClick={() => setShowMetadata(!showMetadata)}
-            className="w-full flex items-center justify-between p-3 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/50 transition-colors cursor-pointer"
-          >
-            <span className="flex items-center gap-2">
-              <BookOpen size={14} /> Help us identify your book (Optional)
-            </span>
-            {showMetadata ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-          </button>
-          
-          {showMetadata && (
-            <div className="p-4 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 bg-slate-900/20">
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase">Book Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. NCERT Science" 
-                  value={metadata.name || ''} 
-                  onChange={(e) => setMetadata({...metadata, name: e.target.value})}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase">ISBN</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 978-81-7450-482-3" 
-                  value={metadata.isbn || ''} 
-                  onChange={(e) => setMetadata({...metadata, isbn: e.target.value})}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase">Publisher Name</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Oswaal" 
-                  value={metadata.publisher || ''} 
-                  onChange={(e) => setMetadata({...metadata, publisher: e.target.value})}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase">Edition</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. 2024" 
-                  value={metadata.edition || ''} 
-                  onChange={(e) => setMetadata({...metadata, edition: e.target.value})}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-lg py-2 px-3 text-xs text-white outline-none"
-                />
-              </div>
-            </div>
-          )}
-        </div>
+
       </div>
 
       {/* Free Tier Limit Indicator */}
@@ -620,6 +575,105 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
               >
                 Save Document
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Staging Modal */}
+      {stagedFiles && stagedFiles.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+              <div>
+                <h3 className="text-lg font-bold text-white">Confirm Upload</h3>
+                <p className="text-xs text-slate-400 mt-1">You selected <strong className="text-violet-300">{stagedFiles.length} file(s)</strong>. Help us identify them for better extraction.</p>
+              </div>
+              <button onClick={() => setStagedFiles(null)} className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer">
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 space-y-6">
+              {/* Selected Files List */}
+              <div className="space-y-2">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Selected Files</label>
+                <div className="flex flex-wrap gap-2">
+                  {stagedFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300">
+                      <FileText size={14} className="text-violet-400" />
+                      <span className="truncate max-w-[200px]">{f.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Book Metadata Grid */}
+              <div className="space-y-3">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Book Metadata (Optional)</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/50">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Book Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. NCERT Science" 
+                      value={metadata.name || ''} 
+                      onChange={(e) => setMetadata({...metadata, name: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">ISBN</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 978-81-7450-482-3" 
+                      value={metadata.isbn || ''} 
+                      onChange={(e) => setMetadata({...metadata, isbn: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Publisher Name</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Oswaal" 
+                      value={metadata.publisher || ''} 
+                      onChange={(e) => setMetadata({...metadata, publisher: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Edition</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. 2024" 
+                      value={metadata.edition || ''} 
+                      onChange={(e) => setMetadata({...metadata, edition: e.target.value})}
+                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="p-6 border-t border-slate-800 bg-slate-950/80 flex justify-between items-center gap-3">
+              <div className="text-xs text-slate-500">
+                Uploading to <strong className="text-slate-300">{activeSubject || "General"}</strong> as {uploadMode === "full_textbook" ? "Full Textbook" : "Single Chapter(s)"}
+              </div>
+              <div className="flex gap-3">
+                <button 
+                  onClick={() => setStagedFiles(null)}
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleProcessStagedFiles}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold shadow-lg shadow-violet-600/20 transition-colors cursor-pointer"
+                >
+                  <Upload size={14} /> Process & Extract
+                </button>
+              </div>
             </div>
           </div>
         </div>

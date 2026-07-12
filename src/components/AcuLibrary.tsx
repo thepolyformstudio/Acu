@@ -123,7 +123,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           created_at: new Date().toISOString()
         };
 
-        await dbService.saveDocumentSource(newDoc);
+        await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
         // Async backup to Google Drive (non-blocking)
         if (isDriveSignedIn()) {
           saveDocumentToDrive(newDoc).catch(() => {});
@@ -172,7 +172,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       created_at: new Date().toISOString()
     };
 
-    await dbService.saveDocumentSource(newDoc);
+    await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
     if (isDriveSignedIn()) {
       saveDocumentToDrive(newDoc).catch(() => {});
     }
@@ -188,7 +188,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
   const handleDeleteDocument = async (docId: string) => {
     if (confirm("Are you sure you want to delete this document from your library?")) {
-      await dbService.deleteDocumentSource(docId);
+      await dbService.deleteDocumentSource(user?.id || "anonymous", docId);
       // Async delete from Google Drive (non-blocking)
       if (isDriveSignedIn()) {
         deleteDocumentFromDrive(docId).catch(() => {});
@@ -307,21 +307,30 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
               </div>
             </div>
 
-            <div className="shrink-0">
+            <div className="shrink-0 flex flex-col gap-1 items-end">
               {uploading ? (
-                <div className="py-2.5 px-6 rounded-xl border border-violet-500/20 bg-violet-950/20 text-center flex items-center justify-center gap-3 h-10">
+                <div className="py-2.5 px-6 rounded-xl border border-violet-500/20 bg-violet-950/20 text-center flex items-center justify-center gap-3 h-10 w-full sm:w-auto">
                   <RefreshCw className="animate-spin text-violet-400" size={16} />
                   <span className="text-xs font-semibold text-violet-300 truncate max-w-[200px]">{statusMessage}</span>
                 </div>
+              ) : !isDriveSignedIn() ? (
+                <div className="group relative">
+                  <button disabled className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-500 rounded-xl text-xs font-semibold tracking-wide cursor-not-allowed text-center h-10 w-full sm:w-auto">
+                    <Upload size={14} /> Upload Textbook
+                  </button>
+                  <div className="absolute top-full right-0 mt-2 p-3 bg-slate-900 border border-slate-700 rounded-lg text-xs text-slate-300 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none w-[220px] z-10 text-right">
+                    Please connect your Google Drive in Settings to enable cross-device Library Sync before uploading.
+                  </div>
+                </div>
               ) : (
-                <label className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer text-center shadow-lg shadow-violet-600/10 h-10">
+                <label className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer text-center shadow-lg shadow-violet-600/10 h-10 w-full sm:w-auto">
                   <Upload size={14} /> Upload Textbook
                   <input 
                     type="file" 
-                    accept=".pdf,.docx,.txt" 
-                    multiple
-                    onChange={handleFileSelect}
                     className="hidden" 
+                    accept=".pdf,.docx,.txt" 
+                    multiple 
+                    onChange={handleFileSelect} 
                   />
                 </label>
               )}

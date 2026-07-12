@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { DocumentSource, ExamAttempt, dbService, UserProfile } from "@/lib/db";
 import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
-import { saveExamAttemptsToDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
   ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2
@@ -173,8 +173,23 @@ export default function AcuExam({
       alert("Please select a subject and chapter.");
       return;
     }
-    const selectedDoc = documents.find(d => d.id === chap.docId);
+    let selectedDoc = documents.find(d => d.id === chap.docId);
     if (!selectedDoc) return;
+    
+    // If doc metadata is loaded but pages payload is empty, fetch from Drive
+    if (!selectedDoc.pages || selectedDoc.pages.length === 0) {
+      setLoading(true);
+      setLoadingMessage("Fetching document payload from Google Drive...");
+      const fullDoc = await loadSingleDocumentFromDrive(selectedDoc.id);
+      if (fullDoc) {
+        selectedDoc = { ...selectedDoc, pages: fullDoc.pages };
+      } else {
+        alert("Could not load document payload from Google Drive. Please ensure it is synced.");
+        setLoading(false);
+        setLoadingMessage("");
+        return;
+      }
+    }
     
     let chapName = "";
     let startP = 1;
@@ -355,9 +370,10 @@ export default function AcuExam({
       await dbService.saveExamAttempt(activeProfileId, attemptResult);
       // Async backup exam results to Google Drive (non-blocking)
       if (isDriveSignedIn()) {
-        dbService.getExamAttempts(activeProfileId).then((all) => {
+        loadExamAttemptsFromDrive(activeProfileId).then((all) => {
+          all.push(attemptResult);
           saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
-        });
+        }).catch(() => {});
       }
       setScorecard(attemptResult);
       setActiveExam(null);
@@ -382,9 +398,10 @@ export default function AcuExam({
       
       // Update Drive if signed in
       if (isDriveSignedIn()) {
-        dbService.getExamAttempts(activeProfileId).then((all) => {
-          saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
-        });
+        loadExamAttemptsFromDrive(activeProfileId).then((all) => {
+          const filtered = all.filter((a: any) => a.id !== scorecard.id);
+          saveExamAttemptsToDrive(activeProfileId, filtered).catch(() => {});
+        }).catch(() => {});
       }
       
       setScorecard(null);

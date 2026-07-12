@@ -315,6 +315,19 @@ export async function loadDocumentsFromDrive(): Promise<any[]> {
   }
 }
 
+export async function loadSingleDocumentFromDrive(docId: string): Promise<any | null> {
+  if (!isDriveSignedIn()) return null;
+  try {
+    const root = await getAppRootFolderId();
+    const docsFolder = await findOrCreateFolder("Documents", root);
+    const content = await readFileByName(`${docId}.json`, docsFolder);
+    return content ? JSON.parse(content) : null;
+  } catch (err) {
+    console.error("Drive load (single document) failed:", err);
+    return null;
+  }
+}
+
 // -- Exam Attempts -----------------------------------------------------------
 
 export async function saveExamAttemptsToDrive(profileId: string, attempts: any[]): Promise<void> {

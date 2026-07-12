@@ -440,46 +440,100 @@ export const dbService = {
   // because user text documents can be megabytes in size, and client-side processing
   // is faster and safer for privacy than uploading to databases.
   
-  async saveDocumentSource(docSource: DocumentSource): Promise<void> {
-    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
-    // Remove if exists
-    const filtered = docs.filter((d: any) => d.id !== docSource.id);
-    filtered.push(docSource);
-    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+  async saveDocumentSource(profileId: string, docSource: DocumentSource): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      const metadata = { ...docSource, pages: [] }; // Strip heavy payload for Firestore
+      await setDoc(doc(firestore, "profiles", profileId, "documents", docSource.id), metadata);
+    } else {
+      const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+      // Remove if exists
+      const filtered = docs.filter((d: any) => d.id !== docSource.id);
+      filtered.push(docSource);
+      saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+    }
   },
 
-  async getDocumentSources(): Promise<DocumentSource[]> {
-    return getMockData(LOCAL_MOCK_DOCUMENTS, []);
+  async getDocumentSources(profileId: string): Promise<DocumentSource[]> {
+    let list: DocumentSource[] = [];
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = collection(firestore, "profiles", profileId, "documents");
+        const snap = await getDocs(q);
+        snap.forEach(d => list.push(d.data() as DocumentSource));
+      } catch (err) {
+        console.error("Firestore getDocumentSources failed:", err);
+      }
+    }
+    
+    // Merge legacy local documents
+    const localDocs = getMockData(LOCAL_MOCK_DOCUMENTS, []) as DocumentSource[];
+    for (const ld of localDocs) {
+      if (!list.find(m => m.id === ld.id)) {
+        list.push(ld);
+      }
+    }
+    return list;
   },
 
-  async deleteDocumentSource(docId: string): Promise<void> {
-    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
-    const filtered = docs.filter((d: any) => d.id !== docId);
-    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+  async deleteDocumentSource(profileId: string, docId: string): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      await setDoc(doc(firestore, "profiles", profileId, "documents", docId), {}); // Soft delete
+    } else {
+      const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+      const filtered = docs.filter((d: any) => d.id !== docId);
+      saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+    }
   },
 
   // -------------------------------------------------------------
-  // Exam Attempts History (Stored Client-Side in Local Storage)
+  // Exam Attempts History
   // -------------------------------------------------------------
   async getExamAttempts(profileId: string): Promise<ExamAttempt[]> {
+    let list: ExamAttempt[] = [];
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = collection(firestore, "profiles", profileId, "attempts");
+        const snap = await getDocs(q);
+        snap.forEach(d => list.push(d.data() as ExamAttempt));
+      } catch (err) {
+        console.error("Firestore getExamAttempts failed:", err);
+      }
+    }
+    
+    // Merge legacy local attempts
     const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
-    return allAttempts[profileId] || [];
+    const localAttempts = allAttempts[profileId] || [];
+    for (const la of localAttempts) {
+      if (!list.find(m => m.id === la.id)) {
+        list.push(la);
+      }
+    }
+    return list;
   },
 
   async saveExamAttempt(profileId: string, attempt: ExamAttempt): Promise<void> {
-    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
-    if (!allAttempts[profileId]) {
-      allAttempts[profileId] = [];
+    if (isFirebaseConfigured && firestore) {
+      const metadata = { ...attempt, answers: [] }; // Strip heavy payload for Firestore
+      await setDoc(doc(firestore, "profiles", profileId, "attempts", attempt.id), metadata);
+    } else {
+      const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+      if (!allAttempts[profileId]) {
+        allAttempts[profileId] = [];
+      }
+      allAttempts[profileId].push(attempt);
+      saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
     }
-    allAttempts[profileId].push(attempt);
-    saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
   },
 
   async deleteExamAttempt(profileId: string, attemptId: string): Promise<void> {
-    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
-    if (allAttempts[profileId]) {
-      allAttempts[profileId] = allAttempts[profileId].filter((a: ExamAttempt) => a.id !== attemptId);
-      saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+    if (isFirebaseConfigured && firestore) {
+      await setDoc(doc(firestore, "profiles", profileId, "attempts", attemptId), {}); // Soft delete
+    } else {
+      const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+      if (allAttempts[profileId]) {
+        allAttempts[profileId] = allAttempts[profileId].filter((a: ExamAttempt) => a.id !== attemptId);
+        saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+      }
     }
   },
 

@@ -10,7 +10,7 @@ import {
   generatePodcastScript,
   generateMCQs
 } from "@/lib/gemini";
-import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
 import PptxGenJS from "pptxgenjs";
 import AcuCard from "./AcuCard";
 import { 
@@ -484,7 +484,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
             <select
               disabled={!selectedSubject}
               value={selectedChapterKey}
-              onChange={(e) => {
+              onChange={async (e) => {
                 const val = e.target.value;
                 setSelectedChapterKey(val);
                 if (!val) {
@@ -494,7 +494,22 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
                 }
                 const chap = flatChapters.find(c => `${c.docId}_${c.chapIdx}` === val);
                 if (chap) {
-                  const doc = documents.find(d => d.id === chap.docId) || null;
+                  let doc = documents.find(d => d.id === chap.docId) || null;
+                  
+                  // If doc metadata is loaded but pages payload is empty, fetch from Drive
+                  if (doc && (!doc.pages || doc.pages.length === 0)) {
+                    setLoading(true);
+                    setLoadingMessage("Fetching document payload from Google Drive...");
+                    const fullDoc = await loadSingleDocumentFromDrive(doc.id);
+                    if (fullDoc) {
+                      doc = { ...doc, pages: fullDoc.pages };
+                    } else {
+                      alert("Could not load document payload from Google Drive. Please ensure it is synced.");
+                    }
+                    setLoading(false);
+                    setLoadingMessage("");
+                  }
+                  
                   setSelectedDoc(doc);
                   handleChapterChange(chap.chapIdx);
                 }

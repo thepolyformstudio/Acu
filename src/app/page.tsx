@@ -59,14 +59,14 @@ export default function Home() {
   // Fetch documents and attempts when active profile change
   useEffect(() => {
     if (activeProfileId) {
-      dbService.getDocumentSources().then(setDocuments).catch(console.error);
+      dbService.getDocumentSources(activeProfileId).then(setDocuments).catch(console.error);
       dbService.getExamAttempts(activeProfileId).then(setAttempts).catch(console.error);
     }
   }, [activeProfileId]);
 
   const refreshData = async () => {
     if (activeProfileId) {
-      const docs = await dbService.getDocumentSources();
+      const docs = await dbService.getDocumentSources(activeProfileId);
       const atts = await dbService.getExamAttempts(activeProfileId);
       setDocuments(docs);
       setAttempts(atts);

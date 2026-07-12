@@ -8,6 +8,90 @@ export function getGeminiApiKey(): string {
   return "";
 }
 
+export function isFreeTierKey(): boolean {
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("acu_gemini_free_tier") !== "false";
+  }
+  return true;
+}
+
+export function getDailyUsage(): { date: string; count: number } {
+  if (typeof window !== "undefined") {
+    const usageStr = localStorage.getItem("acu_gemini_daily_usage");
+    if (usageStr) {
+      try {
+        return JSON.parse(usageStr);
+      } catch (e) {}
+    }
+  }
+  return { date: new Date().toISOString().split('T')[0], count: 0 };
+}
+
+function getLocalResetTime(): string {
+  try {
+    const now = new Date();
+    const laTimeString = now.toLocaleString("en-US", { timeZone: "America/Los_Angeles" });
+    const laDate = new Date(laTimeString);
+    const diff = now.getTime() - laDate.getTime();
+    
+    const nextMidnightLA = new Date(laDate);
+    nextMidnightLA.setHours(24, 0, 0, 0);
+    
+    const localResetTime = new Date(nextMidnightLA.getTime() + diff);
+    return "at " + localResetTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + " (your local time)";
+  } catch (e) {
+    return "tomorrow";
+  }
+}
+
+function checkAndRecordRateLimit() {
+  if (typeof window === "undefined" || !isFreeTierKey()) return;
+
+  const now = Date.now();
+  const today = new Date().toISOString().split('T')[0];
+
+  const timestampsStr = localStorage.getItem("acu_gemini_timestamps") || "[]";
+  let timestamps: number[] = [];
+  try {
+    timestamps = JSON.parse(timestampsStr);
+  } catch (e) {}
+
+  timestamps = timestamps.filter(t => now - t < 60000);
+
+  if (timestamps.length >= 5) {
+    throw new Error("You are generating too fast! Please wait a minute before trying again.");
+  }
+
+  let dailyUsage = getDailyUsage();
+  if (dailyUsage.date !== today) {
+    dailyUsage = { date: today, count: 0 };
+  }
+
+  if (dailyUsage.count >= 20) {
+    throw new Error(`You have reached your daily limit of 20 requests. The quota will reset ${getLocalResetTime()}. Come back then or upgrade your API tier!`);
+  }
+
+  timestamps.push(now);
+  localStorage.setItem("acu_gemini_timestamps", JSON.stringify(timestamps));
+
+  dailyUsage.count += 1;
+  localStorage.setItem("acu_gemini_daily_usage", JSON.stringify(dailyUsage));
+}
+
+async function safeGenerateContent(model: any, request: any) {
+  checkAndRecordRateLimit();
+
+  try {
+    return await model.generateContent(request);
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (msg.includes("429") || msg.includes("Quota") || msg.includes("quota") || msg.includes("rate limit")) {
+      throw new Error("You have exceeded your Gemini API quota. Please wait a moment and try again.");
+    }
+    throw err;
+  }
+}
+
 // -------------------------------------------------------------
 // 1. Chapter Taxonomy Mapping Prompt
 // -------------------------------------------------------------
@@ -71,7 +155,7 @@ export async function generateChapterMap(
   ${tocText}
   `;
 
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: TAXONOMY_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -117,7 +201,7 @@ Output ONLY the chapter title. Nothing else. No quotes. No explanations.
 Text:
 ${firstPageText}`;
 
-      const result = await model.generateContent(prompt);
+      const result = await safeGenerateContent(model, prompt);
       const title = result.response.text().trim();
       if (title) return title;
     }
@@ -229,7 +313,7 @@ export async function generateSlideOutline(
   ${sourceText}
   `;
 
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: SLIDES_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -318,7 +402,7 @@ export async function generateExamPaper(
   ${sourceText}
   `;
 
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: EXAM_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -384,7 +468,7 @@ export async function gradeWrittenAnswer(
   ${studentAnswer}
   `;
 
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: GRADER_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -428,7 +512,7 @@ export async function generateBriefingNotes(sourceText: string, title: string): 
   });
 
   const prompt = `Generate briefing notes for "${title}" based on this text:\n\n${sourceText}`;
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: BRIEFING_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -458,7 +542,7 @@ export async function generateFAQSheet(sourceText: string, title: string): Promi
   });
 
   const prompt = `Generate FAQ Sheet for "${title}" based on this text:\n\n${sourceText}`;
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: FAQ_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -488,7 +572,7 @@ export async function generateTimeline(sourceText: string, title: string): Promi
   });
 
   const prompt = `Generate chronological timeline or process phases for "${title}" based on this text:\n\n${sourceText}`;
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: TIMELINE_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -520,7 +604,7 @@ export async function generatePodcastScript(sourceText: string, title: string): 
   });
 
   const prompt = `Generate a lively dialogue podcast script for "${title}" based on this text:\n\n${sourceText}`;
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: PODCAST_SYSTEM_PROMPT },
     { text: prompt }
   ]);
@@ -558,7 +642,7 @@ export async function generateMCQs(sourceText: string, title: string): Promise<a
   });
 
   const prompt = `Generate 25-50 high quality MCQs for the chapter "${title}" using this source text:\n\n${sourceText}`;
-  const result = await model.generateContent([
+  const result = await safeGenerateContent(model, [
     { text: MCQ_SYSTEM_PROMPT },
     { text: prompt }
   ]);

@@ -15,6 +15,8 @@ interface SettingsPanelProps {
 
 export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
   const [geminiKey, setGeminiKey] = useState("");
+  const [isFreeTier, setIsFreeTier] = useState(true);
+  const [dailyUsageCount, setDailyUsageCount] = useState(0);
   
   const [coupon, setCoupon] = useState("");
   const [couponSuccess, setCouponSuccess] = useState(false);
@@ -31,6 +33,17 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setGeminiKey(localStorage.getItem("acu_gemini_api_key") || "");
+      setIsFreeTier(localStorage.getItem("acu_gemini_free_tier") !== "false");
+      
+      const usageStr = localStorage.getItem("acu_gemini_daily_usage");
+      if (usageStr) {
+        try {
+          const usage = JSON.parse(usageStr);
+          if (usage.date === new Date().toISOString().split('T')[0]) {
+            setDailyUsageCount(usage.count);
+          }
+        } catch (e) {}
+      }
       setDriveConnected(isDriveSignedIn());
     }
     const unsub = onDriveSyncStatusChange(setDriveSyncStatus);
@@ -41,6 +54,7 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
     e.preventDefault();
     if (typeof window !== "undefined") {
       localStorage.setItem("acu_gemini_api_key", geminiKey.trim());
+      localStorage.setItem("acu_gemini_free_tier", isFreeTier ? "true" : "false");
     }
     setKeysSaved(true);
     setTimeout(() => setKeysSaved(false), 3000);
@@ -49,8 +63,10 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
   const handleClearKeys = () => {
     if (typeof window !== "undefined" && confirm("Are you sure you want to delete your saved API key?")) {
       localStorage.removeItem("acu_gemini_api_key");
+      localStorage.removeItem("acu_gemini_free_tier");
       signOutFromDrive();
       setGeminiKey("");
+      setIsFreeTier(true);
       setDriveConnected(false);
     }
   };

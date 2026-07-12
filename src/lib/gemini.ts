@@ -105,17 +105,29 @@ ${firstPageText}`;
   }
 
   // Fallback heuristic
-  const pageTexts = firstPageText.split("\n\n");
-  for (const pageText of pageTexts) {
-    const t = pageText.trim();
-    if (!t || t.length < 20) continue;
-    const start = t.slice(0, 120);
-    // "9 Cell The Building Block of Life  9 1." → "Cell The Building Block of Life"
-    const m = start.match(/^\d+\s+(.+?)\s+\d+\s+\d+\./);
-    if (m) return m[1].trim().replace(/\s{2,}/g, " ");
-    // "Chapter 9: Cell - The Building Block of Life" → "Cell - The Building Block of Life"
-    const cm = start.match(/^(?:chapter|unit|lesson)\s+\d+\s*[-–:.]?\s*(.+?)\s*(?:$|\d)/i);
-    if (cm) return cm[1].trim().replace(/\s{2,}/g, " ");
+  // Since page texts now have newlines, we can look line by line or search the whole block
+  const textToSearch = firstPageText.replace(/\s+/g, ' ');
+  
+  // Look for "Chapter X: Title", "Unit X: Title", or "9 Cell The Building Block of Life"
+  // Match "Chapter X" or just a number at the start of a logical line, followed by the title
+  const chapterMatch = textToSearch.match(/(?:(?:Chapter|Unit|Lesson)\s+\d+\s*[-–:.]?\s*|\b\d+\s+)([A-Z][a-zA-Z0-9\s:,-]+?)(?=\s*(?:Chapter|Unit|Lesson|1\.|Page|$|\d{2,}))/i);
+  
+  if (chapterMatch && chapterMatch[1]) {
+    let title = chapterMatch[1].trim();
+    if (title.length > 2 && title.length < 150) {
+      return title;
+    }
+  }
+
+  // If the above complex regex fails, let's just try to find the first line that looks like a title
+  const lines = firstPageText.split('\n').map(l => l.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (line.length < 5 || line.length > 150) continue;
+    // e.g. "Chapter 9: Cell - The Building Block of Life"
+    const cm = line.match(/^(?:chapter|unit|lesson)\s+\d+\s*[-–:.]?\s*(.+)/i);
+    if (cm && cm[1]) {
+      return cm[1].trim();
+    }
   }
 
   return "";

@@ -97,6 +97,10 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
           } catch (e) {
             setStatusMessage(`[File ${fIdx + 1}/${files.length}] Could not extract title (${e instanceof Error ? e.message : e}), using filename.`);
           }
+          
+          // Small delay so user can read the extraction result before it vanishes
+          await new Promise(r => setTimeout(r, 800));
+          
           chapterMap = [{
             name: chapterName,
             summary: "Chapter content.",

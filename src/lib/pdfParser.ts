@@ -21,11 +21,21 @@ export async function extractTextPageByPage(
       const page = await pdf.getPage(i);
       const textContent = await page.getTextContent();
       
-      // Combine text items on the page
-      const pageText = textContent.items
-        .map((item: any) => item.str || '')
-        .join(' ');
-        
+      // Combine text items on the page, adding newlines when Y coordinate changes significantly
+      let pageText = '';
+      let lastY = null;
+      for (const item of textContent.items) {
+        if (!item.str) continue;
+        const currentY = item.transform[5];
+        if (lastY !== null && Math.abs(currentY - lastY) > 4) {
+          pageText += '\n';
+        } else if (pageText && !pageText.endsWith(' ') && !pageText.endsWith('\n')) {
+          pageText += ' ';
+        }
+        pageText += item.str;
+        lastY = currentY;
+      }
+      
       pagesData.push({
         pageNumber: i,
         text: pageText.trim()

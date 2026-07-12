@@ -85,11 +85,17 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             const titlePages = pages.slice(0, 3).map(p => p.text).filter(Boolean).join("\n\n");
             if (titlePages) {
               const extracted = await extractChapterTitle(titlePages);
-              if (extracted) chapterName = extracted;
+              if (extracted) {
+                chapterName = extracted;
+                setStatusMessage(`[File ${fIdx + 1}/${files.length}] Title found: "${chapterName}"`);
+              } else {
+                setStatusMessage(`[File ${fIdx + 1}/${files.length}] Gemini returned empty title, using filename.`);
+              }
+            } else {
+              setStatusMessage(`[File ${fIdx + 1}/${files.length}] No text found in pages, using filename.`);
             }
           } catch (e) {
-            setStatusMessage(`[File ${fIdx + 1}/${files.length}] No title found in content, using filename "${chapterName}".`);
-            console.warn("Chapter title extraction failed, falling back to filename:", e);
+            setStatusMessage(`[File ${fIdx + 1}/${files.length}] Could not extract title (${e instanceof Error ? e.message : e}), using filename.`);
           }
           chapterMap = [{
             name: chapterName,

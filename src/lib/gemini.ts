@@ -81,31 +81,24 @@ export async function extractChapterTitle(
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({ 
     model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1
-    }
+    generationConfig: { temperature: 0.1 }
   });
 
-  const prompt = `
-  Extract the chapter title from the following textbook text (first few pages).
-  Return a JSON object with a single field "title" containing just the chapter name.
-  If no clear chapter title is found, return {"title": ""}.
+  const prompt =
+`You are given the first few pages of a textbook chapter. Identify the chapter title.
 
-  Text:
-  ${firstPageText}
-  `;
+Rules:
+- The chapter title is typically a bold heading or chapter name like "Chapter 9: Cell - The Building Block of Life" or just "Cell: The Building Block of Life".
+- If the text includes something like "9 Cell The Building Block of Life", the title is "Cell: The Building Block of Life".
+- If you cannot find a clear chapter title, return an empty string.
 
-  const result = await model.generateContent([
-    { text: "You are a textbook analysis assistant. Extract only the chapter title." },
-    { text: prompt }
-  ]);
+Output ONLY the chapter title. Nothing else. No quotes. No explanations.
 
-  const responseText = result.response.text().trim();
-  // Strip markdown code fences if present
-  const cleaned = responseText.replace(/^```(?:json)?\s*([\s\S]*?)\s*```$/m, "$1").trim();
-  const parsed = JSON.parse(cleaned);
-  return parsed.title || "";
+Text:
+${firstPageText}`;
+
+  const result = await model.generateContent(prompt);
+  return result.response.text().trim();
 }
 
 // -------------------------------------------------------------

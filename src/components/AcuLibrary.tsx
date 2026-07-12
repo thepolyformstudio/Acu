@@ -263,104 +263,105 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     }
     groupedDocs[subj].push(doc);
   });
-
   return (
     <div className="space-y-6">
       {/* Configuration Header Panel */}
-      <div className="glass-panel p-6 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-        <div className="space-y-1 text-left">
-          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">Acu Library</h2>
-          <p className="text-slate-400 text-sm">Upload and manage textbook chapters, lecture transcripts, and study notes.</p>
-        </div>
-
-        {/* Dynamic Subject & Upload Configuration Panel */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 w-full md:w-auto shrink-0">
+      <div className="glass-panel p-6 rounded-2xl flex flex-col gap-6">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 w-full">
           <div className="space-y-1 text-left">
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Choose Subject</label>
-            <select
-              value={selectedSubjectType}
-              onChange={(e) => setSelectedSubjectType(e.target.value)}
-              className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none cursor-pointer"
-            >
-              <option value="Science">🧪 Science</option>
-              <option value="Mathematics">📐 Mathematics</option>
-              <option value="Physics">🧲 Physics</option>
-              <option value="Chemistry">🧪 Chemistry</option>
-              <option value="Biology">🧬 Biology</option>
-              <option value="History">📜 History</option>
-              <option value="Geography">🗺️ Geography</option>
-              <option value="Civics">⚖️ Civics / Political Science</option>
-              <option value="English">📖 English</option>
-              <option value="Economics">📊 Economics</option>
-              <option value="Aptitude">🧠 Aptitude / Mental Ability</option>
-              <option value="Custom">✏️ Custom / Other</option>
-            </select>
+            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">Acu Library</h2>
+            <p className="text-slate-400 text-sm">Upload and manage textbook chapters, lecture transcripts, and study notes.</p>
           </div>
 
-          {selectedSubjectType === "Custom" && (
+          {/* Dynamic Subject & Upload Configuration Panel */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 w-full md:w-auto shrink-0">
             <div className="space-y-1 text-left">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Custom Subject</label>
-              <input
-                type="text"
-                placeholder="e.g. Sanskrit, Coding"
-                value={customSubjectText}
-                onChange={(e) => setCustomSubjectText(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none"
-              />
-            </div>
-          )}
-
-          <div className="shrink-0 space-y-1">
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Upload Mode</label>
-            <div className="flex gap-1 p-0.5 bg-slate-950/50 border border-slate-800 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setUploadMode("full_textbook")}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                  uploadMode === "full_textbook"
-                    ? "bg-violet-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Choose Subject</label>
+              <select
+                value={selectedSubjectType}
+                onChange={(e) => setSelectedSubjectType(e.target.value)}
+                className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none cursor-pointer"
               >
-                Full Textbook
-              </button>
-              <button
-                type="button"
-                onClick={() => setUploadMode("single_chapter")}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
-                  uploadMode === "single_chapter"
-                    ? "bg-violet-600 text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Single Chapter
-              </button>
+                <option value="Science">🧪 Science</option>
+                <option value="Mathematics">📐 Mathematics</option>
+                <option value="Physics">🧲 Physics</option>
+                <option value="Chemistry">🧪 Chemistry</option>
+                <option value="Biology">🧬 Biology</option>
+                <option value="History">📜 History</option>
+                <option value="Geography">🗺️ Geography</option>
+                <option value="Civics">⚖️ Civics / Political Science</option>
+                <option value="English">📖 English</option>
+                <option value="Economics">📊 Economics</option>
+                <option value="Aptitude">🧠 Aptitude / Mental Ability</option>
+                <option value="Custom">✏️ Custom / Other</option>
+              </select>
             </div>
-          </div>
 
-          <div className="shrink-0">
-            {uploading ? (
-              <div className="py-2.5 px-6 rounded-xl border border-violet-500/20 bg-violet-950/20 text-center flex items-center justify-center gap-3 h-10">
-                <RefreshCw className="animate-spin text-violet-400" size={16} />
-                <span className="text-xs font-semibold text-violet-300 truncate max-w-[200px]">{statusMessage}</span>
-              </div>
-            ) : (
-              <label className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer text-center shadow-lg shadow-violet-600/10 h-10">
-                <Upload size={14} /> Upload Textbook
-                <input 
-                  type="file" 
-                  accept=".pdf,.docx,.txt" 
-                  multiple
-                  onChange={handleDeviceUpload}
-                  className="hidden" 
+            {selectedSubjectType === "Custom" && (
+              <div className="space-y-1 text-left">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Custom Subject</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Sanskrit, Coding"
+                  value={customSubjectText}
+                  onChange={(e) => setCustomSubjectText(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none"
                 />
-              </label>
+              </div>
             )}
+
+            <div className="shrink-0 space-y-1">
+              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Upload Mode</label>
+              <div className="flex gap-1 p-0.5 bg-slate-950/50 border border-slate-800 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setUploadMode("full_textbook")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                    uploadMode === "full_textbook"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Full Textbook
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUploadMode("single_chapter")}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all cursor-pointer ${
+                    uploadMode === "single_chapter"
+                      ? "bg-violet-600 text-white shadow-sm"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  Single Chapter
+                </button>
+              </div>
+            </div>
+
+            <div className="shrink-0">
+              {uploading ? (
+                <div className="py-2.5 px-6 rounded-xl border border-violet-500/20 bg-violet-950/20 text-center flex items-center justify-center gap-3 h-10">
+                  <RefreshCw className="animate-spin text-violet-400" size={16} />
+                  <span className="text-xs font-semibold text-violet-300 truncate max-w-[200px]">{statusMessage}</span>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer text-center shadow-lg shadow-violet-600/10 h-10">
+                  <Upload size={14} /> Upload Textbook
+                  <input 
+                    type="file" 
+                    accept=".pdf,.docx,.txt" 
+                    multiple
+                    onChange={handleDeviceUpload}
+                    className="hidden" 
+                  />
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Book Metadata Accordion */}
-        <div className="w-full mt-4 bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="w-full bg-slate-950/40 border border-slate-800 rounded-xl overflow-hidden">
           <button 
             onClick={() => setShowMetadata(!showMetadata)}
             className="w-full flex items-center justify-between p-3 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-900/50 transition-colors cursor-pointer"

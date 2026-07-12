@@ -263,6 +263,10 @@ export const dbService = {
           return newProfile;
         }
       } catch (err: any) {
+        const code = err?.code || "";
+        if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+          throw new Error("__CANCELLED__");
+        }
         throw new Error(err.message || "Google Sign-In failed.");
       }
     } else {

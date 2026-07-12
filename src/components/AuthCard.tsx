@@ -79,7 +79,9 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
         setShowOnboarding(true);
       }
     } catch (err: any) {
-      setError(err.message || "Google Sign-In failed.");
+      if (err.message !== "__CANCELLED__") {
+        setError(err.message || "Google Sign-In failed.");
+      }
     } finally {
       setLoading(false);
     }

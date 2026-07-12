@@ -68,6 +68,45 @@ export async function generateChapterMap(
 }
 
 // -------------------------------------------------------------
+// 1b. Single Chapter Title Extraction (lightweight)
+// -------------------------------------------------------------
+export async function extractChapterTitle(
+  firstPageText: string
+): Promise<string> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) {
+    throw new Error("Gemini API Key is missing. Please add your key in the Settings page.");
+  }
+
+  const ai = new GoogleGenerativeAI(apiKey);
+  const model = ai.getGenerativeModel({ 
+    model: "gemini-2.5-flash",
+    generationConfig: {
+      responseMimeType: "application/json",
+      temperature: 0.1
+    }
+  });
+
+  const prompt = `
+  Extract the chapter title from the following textbook page text.
+  Return a JSON object with a single field "title" containing just the chapter name.
+  If no clear chapter title is found, return {"title": ""}.
+
+  Text:
+  ${firstPageText}
+  `;
+
+  const result = await model.generateContent([
+    { text: "You are a textbook analysis assistant. Extract only the chapter title." },
+    { text: prompt }
+  ]);
+
+  const responseText = result.response.text();
+  const parsed = JSON.parse(responseText.trim());
+  return parsed.title || "";
+}
+
+// -------------------------------------------------------------
 // 2. AcuSlide Presentation Outline Generator Prompt
 // -------------------------------------------------------------
 const SLIDES_SYSTEM_PROMPT = `

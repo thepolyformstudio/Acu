@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
-import { generateChapterMap } from "@/lib/gemini";
+import { generateChapterMap, extractChapterTitle } from "@/lib/gemini";
 import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Upload, FileText, Trash2, FolderOpen, Calendar, 
@@ -78,8 +78,18 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         let chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] = [];
 
         if (uploadMode === "single_chapter") {
-          // Each file is one chapter — use filename as chapter name
-          const chapterName = file.name.replace(/\.[^/.]+$/, "");
+          // Each file is one chapter — extract the actual chapter title from content
+          let chapterName = file.name.replace(/\.[^/.]+$/, "");
+          try {
+            setStatusMessage(`[File ${fIdx + 1}/${files.length}] Extracting chapter title from ${file.name}...`);
+            const firstPageText = pages[0]?.text || "";
+            if (firstPageText) {
+              const extracted = await extractChapterTitle(firstPageText);
+              if (extracted) chapterName = extracted;
+            }
+          } catch {
+            // Fallback to filename
+          }
           chapterMap = [{
             name: chapterName,
             summary: "Chapter content.",

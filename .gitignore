@@ -40,3 +40,8 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .firebase/
+
+# sample PDFs
+English.pdf
+Science Chapter 1.pdf
+Science Chapter 2.pdf

@@ -264,11 +264,11 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     setActiveStudyTab(newTab);
     if (!selectedDoc || selectedChapterIdx === -1) return;
 
-    if (newTab === "slides" && slides.length === 0) handleGenerateSlides();
     if (newTab === "notes" && !notes) {
       fetchArtifact("notes");
       if (!faq) fetchArtifact("faq");
     }
+    if (newTab === "slides" && slides.length === 0) handleGenerateSlides();
     if (newTab === "faq" && !faq) fetchArtifact("faq");
     if (newTab === "timeline" && !timeline) fetchArtifact("timeline");
     if (newTab === "mcq" && !mcqs) fetchArtifact("mcq");
@@ -551,16 +551,6 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       {!loading && (slides.length > 0 || notes || faq || timeline || podcast) && (
         <div className="flex flex-wrap gap-2 border-b border-slate-900 pb-3">
           <button
-            onClick={() => handleTabChange("slides")}
-            className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-              activeStudyTab === "slides" 
-                ? "bg-violet-600 text-white" 
-                : "bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
-            }`}
-          >
-            <Presentation size={14} /> Presentation Slides
-          </button>
-          <button
             onClick={() => handleTabChange("notes")}
             className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeStudyTab === "notes" 
@@ -579,6 +569,16 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
             }`}
           >
             <HelpCircle size={14} /> FAQ Sheet
+          </button>
+          <button
+            onClick={() => handleTabChange("slides")}
+            className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeStudyTab === "slides" 
+                ? "bg-violet-600 text-white" 
+                : "bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+            }`}
+          >
+            <Presentation size={14} /> Presentation Slides
           </button>
           <button
             onClick={() => handleTabChange("timeline")}

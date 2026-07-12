@@ -24,10 +24,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const [uploadMode, setUploadMode] = useState<"full_textbook" | "single_chapter">("full_textbook");
 
   // Staging state
-  const [stagedFiles, setStagedFiles] = useState<File[] | null>(null);
-
-  // Metadata state
-  const [metadata, setMetadata] = useState<BookMetadata>({ name: "", isbn: "", publisher: "", edition: "" });
+  const [stagedFiles, setStagedFiles] = useState<{file: File, title: string}[] | null>(null);
 
   // Manual Mapping state
   const [manualMappingQueue, setManualMappingQueue] = useState<{
@@ -64,7 +61,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       return;
     }
 
-    setStagedFiles(Array.from(files));
+    setStagedFiles(Array.from(files).map(f => ({ file: f, title: f.name.replace(/\.[^/.]+$/, "") })));
     e.target.value = '';
   };
 
@@ -77,7 +74,8 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
     try {
       for (let fIdx = 0; fIdx < files.length; fIdx++) {
-        const file = files[fIdx];
+        const stagedItem = files[fIdx];
+        const file = stagedItem.file;
         setStatusMessage(`[File ${fIdx + 1}/${files.length}] Extracting text from ${file.name}...`);
 
         let pages: { pageNumber: number; text: string }[] = [];
@@ -103,88 +101,22 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         let chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] = [];
 
         if (uploadMode === "single_chapter") {
-          // Each file is one chapter — extract the actual chapter title from content
-          let chapterName = file.name.replace(/\.[^/.]+$/, "");
-          try {
-            setStatusMessage(`[File ${fIdx + 1}/${files.length}] Extracting chapter title from ${file.name}...`);
-            const titlePages = pages.slice(0, 3).map(p => p.text).filter(Boolean).join("\n\n");
-            if (titlePages) {
-              const extracted = await extractChapterTitle(titlePages, metadata);
-              if (extracted) {
-                chapterName = extracted;
-                setStatusMessage(`[File ${fIdx + 1}/${files.length}] Title found: "${chapterName}"`);
-              } else {
-                setStatusMessage(`[File ${fIdx + 1}/${files.length}] Gemini returned empty title, using filename.`);
-              }
-            } else {
-              setStatusMessage(`[File ${fIdx + 1}/${files.length}] No text found in pages, using filename.`);
-            }
-          } catch (e) {
-            setStatusMessage(`[File ${fIdx + 1}/${files.length}] Could not extract title (${e instanceof Error ? e.message : e}), using filename.`);
-          }
-          
-          // Small delay so user can read the extraction result before it vanishes
-          await new Promise(r => setTimeout(r, 800));
-          
           chapterMap = [{
-            name: chapterName,
+            name: stagedItem.title,
             summary: "Chapter content.",
             startPage: 1,
             endPage: pages.length
           }];
         } else {
-          // Full textbook — find the Table of Contents and extract chapters
-          const maxScanPages = Math.min(40, pages.length);
-          let tocPageText = "";
-
-          // Scan pages looking for the Table of Contents
-          for (let i = 0; i < maxScanPages; i++) {
-            const pageText = pages[i].text;
-            const lower = pageText.toLowerCase();
-            // Detect TOC by looking for "contents" heading or "unit/chapter" numbering with page references
-            const hasContentsHeading = /contents|index/i.test(lower);
-            const hasChapterUnitPattern = /(chapter|unit|section|lesson)\s+\d+/i.test(lower);
-            const hasPageNumberRef = /\d+\s*\.{2,}\s*\d+\s*$|\d+\s*–\s*\d+|\bpage?\s*\d+/im.test(pageText);
-
-            if ((hasContentsHeading && (hasChapterUnitPattern || hasPageNumberRef)) || 
-                (hasChapterUnitPattern && hasPageNumberRef && i > 2)) {
-              // Found TOC content — include this and surrounding pages
-              const start = Math.max(0, i - 1);
-              const end = Math.min(maxScanPages - 1, i + 3);
-              tocPageText = pages.slice(start, end + 1)
-                .map(p => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
-              break;
-            }
-          }
-
-          // Fallback: use first 5 pages if no TOC found
-          if (!tocPageText) {
-            tocPageText = pages.slice(0, 5)
-              .map(p => `[Page ${p.pageNumber}]\n${p.text}`).join("\n\n");
-          }
-
-          try {
-            chapterMap = await generateChapterMap(tocPageText, metadata);
-            if (!chapterMap || chapterMap.length === 0) throw new Error("Empty TOC generated.");
-          } catch (err) {
-            console.warn("Could not auto-generate chapter map. Prompting manual mapping.", err);
-            setManualMappingQueue({ file, pages });
-            setUploading(false);
-            setStatusMessage("");
-            return; // Wait for user to manually map
-          }
-
-          // Normalize: Convert "Unit X" chapter names to "Chapter X" for consistent terminology
-          chapterMap = chapterMap.map((chap, idx) => ({
-            ...chap,
-            name: chap.name.replace(/^Unit\s+\d+/, `Chapter ${idx + 1}`),
-            summary: chap.summary || "Syllabus section."
-          }));
+          setManualMappingQueue({ file, pages });
+          setUploading(false);
+          setStatusMessage("");
+          return; // Wait for user to manually map
         }
 
         const newDoc: DocumentSource = {
           id: "doc_" + Math.random().toString(36).substring(2, 9),
-          name: file.name,
+          name: stagedItem.title || file.name,
           subject: activeSubject || "General",
           pages,
           chapterMap,
@@ -280,46 +212,72 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       <div className="glass-panel p-6 rounded-2xl flex flex-col gap-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 w-full">
           <div className="space-y-1 text-left">
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">Acu Library</h2>
+            <div className="flex items-center gap-3 mb-1">
+              <h2 className="text-2xl sm:text-3xl font-display font-bold text-white">Acu Library</h2>
+              {isDriveSignedIn() && (
+                <button 
+                  onClick={async () => {
+                    const btn = document.getElementById('sync-btn');
+                    if (btn) btn.innerText = 'Syncing...';
+                    try {
+                      for (const doc of documents) {
+                        await saveDocumentToDrive(doc);
+                      }
+                      if (btn) btn.innerText = 'Synced ✓';
+                    } catch (e) {
+                      if (btn) btn.innerText = 'Sync Failed';
+                    }
+                    setTimeout(() => { if (btn) btn.innerText = 'Backup Library'; }, 2000);
+                  }}
+                  id="sync-btn"
+                  className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500/20 transition-colors cursor-pointer"
+                  title="Upload all existing files in your library to Google Drive"
+                >
+                  Backup Library
+                </button>
+              )}
+            </div>
             <p className="text-slate-400 text-sm">Upload and manage textbook chapters, lecture transcripts, and study notes.</p>
           </div>
 
           {/* Dynamic Subject & Upload Configuration Panel */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-end gap-3 w-full md:w-auto shrink-0">
-            <div className="space-y-1 text-left">
-              <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Choose Subject</label>
-              <select
-                value={selectedSubjectType}
-                onChange={(e) => setSelectedSubjectType(e.target.value)}
-                className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none cursor-pointer"
-              >
-                <option value="Science">🧪 Science</option>
-                <option value="Mathematics">📐 Mathematics</option>
-                <option value="Physics">🧲 Physics</option>
-                <option value="Chemistry">🧪 Chemistry</option>
-                <option value="Biology">🧬 Biology</option>
-                <option value="History">📜 History</option>
-                <option value="Geography">🗺️ Geography</option>
-                <option value="Civics">⚖️ Civics / Political Science</option>
-                <option value="English">📖 English</option>
-                <option value="Economics">📊 Economics</option>
-                <option value="Aptitude">🧠 Aptitude / Mental Ability</option>
-                <option value="Custom">✏️ Custom / Other</option>
-              </select>
-            </div>
-
-            {selectedSubjectType === "Custom" && (
+            <div className="flex flex-col gap-3">
               <div className="space-y-1 text-left">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Custom Subject</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Sanskrit, Coding"
-                  value={customSubjectText}
-                  onChange={(e) => setCustomSubjectText(e.target.value)}
-                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none"
-                />
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Choose Subject</label>
+                <select
+                  value={selectedSubjectType}
+                  onChange={(e) => setSelectedSubjectType(e.target.value)}
+                  className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none cursor-pointer"
+                >
+                  <option value="Science">🧪 Science</option>
+                  <option value="Mathematics">📐 Mathematics</option>
+                  <option value="Physics">🧲 Physics</option>
+                  <option value="Chemistry">🧪 Chemistry</option>
+                  <option value="Biology">🧬 Biology</option>
+                  <option value="History">📜 History</option>
+                  <option value="Geography">🗺️ Geography</option>
+                  <option value="Civics">⚖️ Civics / Political Science</option>
+                  <option value="English">📖 English</option>
+                  <option value="Economics">📊 Economics</option>
+                  <option value="Aptitude">🧠 Aptitude / Mental Ability</option>
+                  <option value="Custom">✏️ Custom / Other</option>
+                </select>
               </div>
-            )}
+
+              {selectedSubjectType === "Custom" && (
+                <div className="space-y-1 text-left">
+                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Custom Subject</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Sanskrit, Coding"
+                    value={customSubjectText}
+                    onChange={(e) => setCustomSubjectText(e.target.value)}
+                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs text-white outline-none"
+                  />
+                </div>
+              )}
+            </div>
 
             <div className="shrink-0 space-y-1">
               <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Upload Mode</label>
@@ -595,63 +553,37 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             </div>
             
             <div className="p-6 overflow-y-auto flex-1 space-y-6">
-              {/* Selected Files List */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Selected Files</label>
-                <div className="flex flex-wrap gap-2">
+              {/* Selected Files List with Editable Titles */}
+              <div className="space-y-4">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Review & Edit Chapter Titles</label>
+                <div className="space-y-3">
                   {stagedFiles.map((f, i) => (
-                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-300">
-                      <FileText size={14} className="text-violet-400" />
-                      <span className="truncate max-w-[200px]">{f.name}</span>
+                    <div key={i} className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-lg bg-slate-950/50 border border-slate-800">
+                      <div className="flex items-center gap-2 shrink-0 sm:w-1/3">
+                        <FileText size={14} className="text-violet-400" />
+                        <span className="text-xs text-slate-400 truncate" title={f.file.name}>{f.file.name}</span>
+                      </div>
+                      {uploadMode === "single_chapter" ? (
+                        <div className="flex-1 w-full">
+                          <input 
+                            type="text" 
+                            value={f.title}
+                            onChange={(e) => {
+                              const newFiles = [...stagedFiles];
+                              newFiles[i].title = e.target.value;
+                              setStagedFiles(newFiles);
+                            }}
+                            className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-1.5 px-3 text-xs text-white outline-none"
+                            placeholder="Chapter Title"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex-1 text-xs text-slate-500 italic">
+                          Manual mapping will be required after extraction.
+                        </div>
+                      )}
                     </div>
                   ))}
-                </div>
-              </div>
-
-              {/* Book Metadata Grid */}
-              <div className="space-y-3">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Book Metadata (Optional)</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/40 p-4 rounded-xl border border-slate-800/50">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Book Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. NCERT Science" 
-                      value={metadata.name || ''} 
-                      onChange={(e) => setMetadata({...metadata, name: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase">ISBN</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 978-81-7450-482-3" 
-                      value={metadata.isbn || ''} 
-                      onChange={(e) => setMetadata({...metadata, isbn: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Publisher Name</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Oswaal" 
-                      value={metadata.publisher || ''} 
-                      onChange={(e) => setMetadata({...metadata, publisher: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase">Edition</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. 2024" 
-                      value={metadata.edition || ''} 
-                      onChange={(e) => setMetadata({...metadata, edition: e.target.value})}
-                      className="w-full bg-slate-900 border border-slate-700 focus:border-violet-500 rounded-lg py-2 px-3 text-sm text-white outline-none"
-                    />
-                  </div>
                 </div>
               </div>
             </div>

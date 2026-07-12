@@ -6,7 +6,7 @@ import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
 import { saveExamAttemptsToDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
-  ChevronRight, Award, Timer, AlertCircle, Send, Check
+  ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2
 } from "lucide-react";
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer 
@@ -375,6 +375,23 @@ export default function AcuExam({
     }
   };
 
+  const handleDeleteScorecard = async () => {
+    if (!scorecard) return;
+    if (confirm("Are you sure you want to delete this graded test result?")) {
+      await dbService.deleteExamAttempt(activeProfileId, scorecard.id);
+      
+      // Update Drive if signed in
+      if (isDriveSignedIn()) {
+        dbService.getExamAttempts(activeProfileId).then((all) => {
+          saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
+        });
+      }
+      
+      setScorecard(null);
+      onRefresh();
+    }
+  };
+
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -637,11 +654,26 @@ export default function AcuExam({
       {/* -------------------------------------------------------------
           SCREEN B: TIMED EXAM MODE WORKSPACE
          ------------------------------------------------------------- */}
-      {activeExam && (
+      {activeExam && !scorecard && (
         <div className="glass-panel p-6 rounded-2xl space-y-6 text-left relative">
-          {/* Top Sticky Timer Bar */}
-          <div className="flex items-center justify-between border-b border-slate-900 pb-4 sticky top-[72px] bg-[#0b0c10]/95 backdrop-blur-md py-2 z-20">
-            <div>
+          {loading ? (
+            <div className="p-20 text-center space-y-5 animate-fade-in">
+              <div className="relative w-16 h-16 mx-auto">
+                <div className="absolute inset-0 border-4 border-violet-500/20 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-violet-500 rounded-full border-t-transparent animate-spin"></div>
+              </div>
+              <div>
+                <h4 className="text-xl font-display font-bold text-white mb-2">{loadingMessage}</h4>
+                <p className="text-sm text-slate-500 max-w-md mx-auto leading-relaxed">
+                  Please wait while your answers are evaluated. Our AI AcuGrader is actively matching your responses against the board blueprint rubrics...
+                </p>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* Top Sticky Timer Bar */}
+              <div className="flex items-center justify-between border-b border-slate-900 pb-4 sticky top-[72px] bg-[#0b0c10]/95 backdrop-blur-md py-2 z-20">
+                <div>
               <h3 className="text-lg font-bold text-white">{activeExam.title}</h3>
               <p className="text-xs text-slate-500">Board Standard Exam Blueprint</p>
             </div>
@@ -730,6 +762,8 @@ export default function AcuExam({
               <Send size={14} /> Submit Answer Sheet
             </button>
           </div>
+            </>
+          )}
         </div>
       )}
 
@@ -744,12 +778,20 @@ export default function AcuExam({
                 <h3 className="text-xl font-bold text-white">{scorecard.examTitle}</h3>
                 <p className="text-xs text-slate-500">Graded on {scorecard.date}</p>
               </div>
-              <button
-                onClick={() => setScorecard(null)}
-                className="text-xs px-4 py-2 border border-slate-800 hover:border-slate-500 rounded-xl text-slate-300 transition-all cursor-pointer"
-              >
-                Done / Back
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDeleteScorecard}
+                  className="text-xs px-4 py-2 border border-rose-900/50 hover:bg-rose-900/20 text-rose-400 rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <Trash2 size={14} /> Delete Result
+                </button>
+                <button
+                  onClick={() => setScorecard(null)}
+                  className="text-xs px-4 py-2 border border-slate-800 hover:border-slate-500 rounded-xl text-slate-300 transition-all cursor-pointer"
+                >
+                  Done / Back
+                </button>
+              </div>
             </div>
 
             {/* Scorecard grid (Glow + Recharts Radar Chart) */}

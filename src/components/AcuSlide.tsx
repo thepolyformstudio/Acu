@@ -7,16 +7,17 @@ import {
   generateBriefingNotes, 
   generateFAQSheet, 
   generateTimeline, 
-  generatePodcastScript 
+  generatePodcastScript,
+  generateMCQs
 } from "@/lib/gemini";
-import { saveNotesToDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import PptxGenJS from "pptxgenjs";
 import AcuCard from "./AcuCard";
 import { 
   Play, Download, RefreshCw, Layers, Edit2, Palette, 
   ChevronLeft, ChevronRight, Check, AlertCircle, FileText,
   Volume2, VolumeX, HelpCircle, BookOpen, Clock, Presentation,
-  ListCollapse, MessageCircle, Mic
+  ListCollapse, MessageCircle, Mic, ListChecks
 } from "lucide-react";
 
 interface AcuSlideProps {
@@ -74,11 +75,36 @@ const TRANSITION_THEMES: SlideTheme[] = [
 ];
 
 export default function AcuSlide({ documents, user }: AcuSlideProps) {
+  const [selectedSubject, setSelectedSubject] = useState("");
+  const [selectedChapterKey, setSelectedChapterKey] = useState("");
   const [selectedDoc, setSelectedDoc] = useState<DocumentSource | null>(null);
   const [selectedChapterIdx, setSelectedChapterIdx] = useState<number>(-1);
   
+  // Build unique subject list from all documents
+  const subjectsList = [...new Set(documents.map(d => d.subject || "General"))];
+
+  // Flatten all chapters under the selected subject across all documents
+  type FlatChapter = { docId: string; chapIdx: number; name: string; summary: string; startPage: number; endPage: number; docName: string; docPageCount: number };
+  const flatChapters: FlatChapter[] = selectedSubject
+    ? documents
+        .filter(d => (d.subject || "General") === selectedSubject)
+        .flatMap(d =>
+          (d.chapterMap || []).map((chap, idx) => ({
+            docId: d.id,
+            chapIdx: idx,
+            name: chap.name,
+            summary: chap.summary,
+            startPage: chap.startPage,
+            endPage: chap.endPage,
+            docName: d.name,
+            docPageCount: d.pages.length,
+          }))
+        )
+    : [];
+
+  
   // Tab control
-  const [activeStudyTab, setActiveStudyTab] = useState<"slides" | "notes" | "faq" | "timeline" | "podcast">("slides");
+  const [activeStudyTab, setActiveStudyTab] = useState<"slides" | "notes" | "faq" | "timeline" | "podcast" | "mcq">("notes");
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
@@ -88,6 +114,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
   const [faq, setFaq] = useState<any | null>(null);
   const [timeline, setTimeline] = useState<any | null>(null);
   const [podcast, setPodcast] = useState<any | null>(null);
+  const [mcqs, setMcqs] = useState<any[] | null>(null);
 
   // Slides-specific state
   const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
@@ -126,9 +153,21 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     if (!chap) return;
 
     setLoading(true);
-    setLoadingMessage("Gemini is structuring your presentation outline...");
+    setLoadingMessage("Checking Google Drive for existing slides...");
     
     try {
+      if (isDriveSignedIn()) {
+        const existing = await loadNotesFromDrive(selectedDoc.subject || "General", chap.name, "slides");
+        if (existing) {
+          setSlides(existing);
+          setActiveSlideIdx(0);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setLoadingMessage("Gemini is structuring your presentation outline...");
+      
       const textSlices = selectedDoc.pages
         .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
         .map(p => p.text)
@@ -143,7 +182,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       setActiveSlideIdx(0);
       // Async backup to Google Drive
       if (isDriveSignedIn()) {
-        saveNotesToDrive(selectedDoc.id, chap.name, "slides", generated).catch(() => {});
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "slides", generated).catch(() => {});
       }
     } catch (err: any) {
       alert("Generation failed: " + (err.message || String(err)));
@@ -153,15 +192,30 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
   };
 
   // Fetch NotebookLM Study Artifacts
-  const fetchArtifact = async (tabType: "notes" | "faq" | "timeline" | "podcast") => {
+  const fetchArtifact = async (tabType: "notes" | "faq" | "timeline" | "podcast" | "mcq") => {
     if (!selectedDoc || selectedChapterIdx === -1) return;
     const chap = selectedDoc.chapterMap?.[selectedChapterIdx];
     if (!chap) return;
 
     setLoading(true);
-    setLoadingMessage(`Gemini is creating your ${tabType === "notes" ? "study notes" : tabType === "faq" ? "FAQs" : tabType === "timeline" ? "timeline phases" : "podcast audio script"}...`);
+    setLoadingMessage(`Checking Google Drive for existing ${tabType}...`);
 
     try {
+      if (isDriveSignedIn()) {
+        const existing = await loadNotesFromDrive(selectedDoc.subject || "General", chap.name, tabType);
+        if (existing) {
+          if (tabType === "notes") setNotes(existing);
+          else if (tabType === "faq") setFaq(existing);
+          else if (tabType === "timeline") setTimeline(existing);
+          else if (tabType === "podcast") setPodcast(existing);
+          else if (tabType === "mcq") setMcqs(existing);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setLoadingMessage(`Gemini is creating your ${tabType === "notes" ? "study notes" : tabType === "faq" ? "FAQs" : tabType === "timeline" ? "timeline phases" : tabType === "mcq" ? "MCQs" : "podcast audio script"}...`);
+
       const textSlices = selectedDoc.pages
         .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
         .map(p => p.text)
@@ -174,19 +228,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       if (tabType === "notes") {
         const data = await generateBriefingNotes(textSlices, chap.name);
         setNotes(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "notes", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "notes", data).catch(() => {});
       } else if (tabType === "faq") {
         const data = await generateFAQSheet(textSlices, chap.name);
         setFaq(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "faq", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "faq", data).catch(() => {});
       } else if (tabType === "timeline") {
         const data = await generateTimeline(textSlices, chap.name);
         setTimeline(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "timeline", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "timeline", data).catch(() => {});
       } else if (tabType === "podcast") {
         const data = await generatePodcastScript(textSlices, chap.name);
         setPodcast(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.id, chap.name, "podcast", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "podcast", data).catch(() => {});
+      } else if (tabType === "mcq") {
+        const data = await generateMCQs(textSlices, chap.name);
+        setMcqs(data);
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "mcq", data).catch(() => {});
       }
     } catch (err: any) {
       alert("Failed to generate: " + (err.message || String(err)));
@@ -195,7 +253,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     }
   };
 
-  const handleTabChange = (newTab: "slides" | "notes" | "faq" | "timeline" | "podcast") => {
+  const handleTabChange = (newTab: "slides" | "notes" | "faq" | "timeline" | "podcast" | "mcq") => {
     // Cancel podcast voice playback if user switches tabs
     if (activeStudyTab === "podcast" && newTab !== "podcast") {
       window.speechSynthesis.cancel();
@@ -207,10 +265,14 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     if (!selectedDoc || selectedChapterIdx === -1) return;
 
     if (newTab === "slides" && slides.length === 0) handleGenerateSlides();
-    if (newTab === "notes" && !notes) fetchArtifact("notes");
+    if (newTab === "notes" && !notes) {
+      fetchArtifact("notes");
+      if (!faq) fetchArtifact("faq");
+    }
     if (newTab === "faq" && !faq) fetchArtifact("faq");
     if (newTab === "timeline" && !timeline) fetchArtifact("timeline");
-    if (newTab === "podcast" && !podcast) fetchArtifact("podcast");
+    if (newTab === "mcq" && !mcqs) fetchArtifact("mcq");
+    // Podcast will now be fetched manually by the user
   };
 
   // Play podcast audio overview alternates voices
@@ -399,19 +461,20 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1 text-left">
-            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Select Textbook</label>
+            <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Select Subject</label>
             <select
-              value={selectedDoc?.id || ""}
+              value={selectedSubject}
               onChange={(e) => {
-                const found = documents.find(d => d.id === e.target.value) || null;
-                setSelectedDoc(found);
+                setSelectedSubject(e.target.value);
+                setSelectedChapterKey("");
+                setSelectedDoc(null);
                 handleChapterChange(-1);
               }}
               className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
             >
-              <option value="">-- Choose document --</option>
-              {documents.map((d) => (
-                <option key={d.id} value={d.id}>{d.name} {d.subject ? `(${d.subject})` : ""}</option>
+              <option value="">-- Choose Subject --</option>
+              {subjectsList.map((subj) => (
+                <option key={subj} value={subj}>{subj}</option>
               ))}
             </select>
           </div>
@@ -419,21 +482,37 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
           <div className="space-y-1 text-left">
             <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Select Chapter</label>
             <select
-              disabled={!selectedDoc}
-              value={selectedChapterIdx}
-              onChange={(e) => handleChapterChange(Number(e.target.value))}
+              disabled={!selectedSubject}
+              value={selectedChapterKey}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSelectedChapterKey(val);
+                if (!val) {
+                  setSelectedDoc(null);
+                  handleChapterChange(-1);
+                  return;
+                }
+                const chap = flatChapters.find(c => `${c.docId}_${c.chapIdx}` === val);
+                if (chap) {
+                  const doc = documents.find(d => d.id === chap.docId) || null;
+                  setSelectedDoc(doc);
+                  handleChapterChange(chap.chapIdx);
+                }
+              }}
               className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer disabled:opacity-50"
             >
-              <option value={-1}>-- Choose chapter --</option>
-              {selectedDoc?.chapterMap?.map((chap, idx) => (
-                <option key={idx} value={idx}>{chap.name}</option>
+              <option value="">-- Choose chapter --</option>
+              {flatChapters.map((chap) => (
+                <option key={`${chap.docId}_${chap.chapIdx}`} value={`${chap.docId}_${chap.chapIdx}`}>
+                  {chap.name} ({chap.docName})
+                </option>
               ))}
             </select>
           </div>
 
           <div className="flex items-end">
             <button
-              onClick={() => handleTabChange("slides")}
+              onClick={() => handleTabChange("notes")}
               disabled={loading || !selectedDoc || selectedChapterIdx === -1}
               className="w-full py-2.5 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center justify-center gap-1.5"
             >
@@ -505,6 +584,16 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
             }`}
           >
             <Volume2 size={14} /> Podcast Overview
+          </button>
+          <button
+            onClick={() => handleTabChange("mcq")}
+            className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+              activeStudyTab === "mcq" 
+                ? "bg-violet-600 text-white" 
+                : "bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800"
+            }`}
+          >
+            <ListChecks size={14} /> Practice MCQs
           </button>
           <button
             onClick={() => setShowFlashcards(true)}
@@ -864,71 +953,127 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
             </div>
           )}
 
-          {/* TAB 5: AUDIO PODCAST SCRIPT */}
-          {activeStudyTab === "podcast" && podcast && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch text-left animate-fade-in">
-              {/* Left Column: Dialogue script list */}
-              <div className="lg:col-span-8 glass-panel p-6 rounded-2xl flex flex-col justify-between space-y-6">
-                <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
-                  <h3 className="font-display font-extrabold text-white text-lg">Audio Podcast Overview Script</h3>
-                  <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Audio Overview</span>
-                </div>
-
-                <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 flex-1 mb-4">
-                  {podcast.script?.map((line: any, idx: number) => {
-                    const isA = line.speaker === "Host A" || line.speaker.includes("A");
-                    return (
-                      <div key={idx} className={`flex items-start gap-3 p-3 rounded-xl border ${
-                        isA ? "border-violet-500/10 bg-violet-950/10 self-start" : "border-slate-800 bg-slate-900/20 self-end"
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 font-display ${
-                          isA ? "bg-violet-600 text-white" : "bg-emerald-600 text-white"
-                        }`}>
-                          {isA ? "🎤" : "🎙️"}
+          {/* TAB 5: MCQ */}
+          {activeStudyTab === "mcq" && mcqs && (
+            <div className="glass-panel p-6 rounded-2xl text-left space-y-6 max-w-4xl mx-auto animate-fade-in">
+              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <h3 className="font-display font-extrabold text-white text-lg">Practice MCQs</h3>
+                <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Self Assessment</span>
+              </div>
+              <div className="space-y-4">
+                {mcqs.map((mcq: any, idx: number) => (
+                  <details key={idx} className="group p-4 rounded-xl border border-slate-850 bg-slate-950/20 space-y-2 cursor-pointer">
+                    <summary className="flex items-start gap-2.5 outline-none list-none">
+                      <span className="text-xs font-bold text-violet-400 bg-violet-950/60 border border-violet-500/30 px-1.5 py-0.5 rounded shrink-0">{idx + 1}</span>
+                      <div className="space-y-3 pt-0.5 w-full">
+                        <h4 className="text-xs sm:text-sm font-bold text-white">{mcq.question}</h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
+                          {mcq.options.map((opt: string, oIdx: number) => (
+                            <div key={oIdx} className="bg-slate-900/50 p-2 rounded-lg border border-slate-800 flex items-center gap-2">
+                              <div className="w-4 h-4 rounded-full border border-slate-700 flex-shrink-0" />
+                              {opt}
+                            </div>
+                          ))}
                         </div>
-                        <div className="space-y-0.5">
-                          <span className={`text-[10px] font-bold ${isA ? "text-violet-400" : "text-emerald-400"}`}>{line.speaker}</span>
-                          <p className="text-xs text-slate-300 leading-relaxed">{line.text}</p>
+                        <div className="text-xs text-violet-400 font-semibold mt-2 group-open:hidden">
+                          Click to reveal answer
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Right Column: Audio dashboard playback */}
-              <div className="lg:col-span-4 glass-panel p-6 rounded-2xl flex flex-col items-center justify-center text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-violet-400 animate-pulse">
-                  <Mic size={36} />
-                </div>
-                
-                <div className="space-y-1">
-                  <h4 className="font-display font-bold text-white text-base">Listen to Podcast Episode</h4>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    Listen to a dialog summary spoken by alternating male and female synthesized voices.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handlePlayPodcast}
-                  className={`w-full py-3 px-6 rounded-xl font-semibold text-xs tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                    podcastPlaying 
-                      ? "bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/15"
-                      : "bg-violet-600 hover:bg-violet-500 text-white shadow-lg shadow-violet-600/15"
-                  }`}
-                >
-                  {podcastPlaying ? (
-                    <>
-                      <VolumeX size={16} /> Stop Audio Overview
-                    </>
-                  ) : (
-                    <>
-                      <Volume2 size={16} /> Play Audio Overview
-                    </>
-                  )}
-                </button>
+                    </summary>
+                    <div className="pl-8 pt-4 text-xs space-y-2 border-t border-slate-800/50 mt-4">
+                      <div className="font-bold text-emerald-400 flex items-center gap-2">
+                        <Check size={14} /> Correct Answer: {mcq.correctAnswer}
+                      </div>
+                      <div className="text-slate-400 leading-relaxed">
+                        {mcq.explanation}
+                      </div>
+                    </div>
+                  </details>
+                ))}
               </div>
             </div>
+          )}
+
+          {/* TAB 6: PODCAST */}
+          {activeStudyTab === "podcast" && (
+            <>
+              {!podcast ? (
+                <div className="glass-panel p-8 rounded-2xl text-center space-y-4 max-w-2xl mx-auto animate-fade-in border border-amber-500/30 bg-amber-950/10">
+                  <div className="w-12 h-12 bg-amber-500/20 rounded-full flex items-center justify-center mx-auto mb-2 text-amber-400">
+                    <AlertCircle size={24} />
+                  </div>
+                  <h3 className="font-display font-bold text-white text-lg">Generate Audio Podcast</h3>
+                  <p className="text-sm text-slate-300 leading-relaxed max-w-lg mx-auto">
+                    Creating a full conversational podcast script consumes significant AI quota and takes a few moments. Are you sure you want to generate it for this chapter?
+                  </p>
+                  <button 
+                    onClick={() => fetchArtifact("podcast")}
+                    className="mt-4 px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-sm font-semibold transition-colors flex items-center gap-2 mx-auto"
+                  >
+                    <Volume2 size={16} /> Generate Podcast Script
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch text-left animate-fade-in">
+                  {/* Left Column: Dialogue script list */}
+                  <div className="lg:col-span-8 glass-panel p-6 rounded-2xl flex flex-col justify-between space-y-6">
+                    <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                      <h3 className="font-display font-extrabold text-white text-lg">Audio Podcast Overview Script</h3>
+                      <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Audio Overview</span>
+                    </div>
+
+                    <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 flex-1 mb-4">
+                      {podcast.script?.map((line: any, idx: number) => {
+                        const isHostA = line.speaker === "Host A" || line.speaker.includes("A");
+                        return (
+                          <div key={idx} className={`flex gap-4 ${isHostA ? "" : "flex-row-reverse"}`}>
+                            <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center font-bold text-[10px] ${isHostA ? "bg-violet-600/20 text-violet-400 border border-violet-500/30" : "bg-emerald-600/20 text-emerald-400 border border-emerald-500/30"}`}>
+                              {isHostA ? "HA" : "HB"}
+                            </div>
+                            <div className={`p-3 rounded-xl max-w-[80%] text-sm leading-relaxed ${isHostA ? "bg-slate-900/50 border border-slate-800 text-slate-300 rounded-tl-none" : "bg-violet-950/20 border border-violet-900/30 text-slate-300 rounded-tr-none"}`}>
+                              <span className={`text-[10px] uppercase font-bold block mb-1 ${isHostA ? "text-violet-400" : "text-emerald-400"}`}>{line.speaker}</span>
+                              {line.text}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Audio player controls */}
+                  <div className="lg:col-span-4 glass-panel p-6 rounded-2xl flex flex-col items-center justify-center space-y-6 text-center border border-violet-500/20">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-tr from-violet-600 to-fuchsia-600 p-1">
+                      <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center">
+                        <Mic size={32} className={podcastPlaying ? "text-violet-400 animate-pulse" : "text-slate-500"} />
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white text-lg">AI Audio Playback</h4>
+                      <p className="text-xs text-slate-400 mt-1">Listen to the generated overview</p>
+                    </div>
+                    
+                    <button
+                      onClick={handlePlayPodcast}
+                      className={`w-full py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${
+                        podcastPlaying 
+                          ? "bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 border border-rose-500/30" 
+                          : "bg-violet-600 text-white hover:bg-violet-500"
+                      }`}
+                    >
+                      {podcastPlaying ? (
+                        <><VolumeX size={18} /> Stop Playback</>
+                      ) : (
+                        <><Play size={18} /> Play Podcast</>
+                      )}
+                    </button>
+                    
+                    <div className="text-[10px] text-slate-500 max-w-xs leading-relaxed">
+                      Using standard browser text-to-speech API. Voice quality depends on your OS configuration.
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

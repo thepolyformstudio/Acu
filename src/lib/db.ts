@@ -6,7 +6,7 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, quer
 export interface UserProfile {
   id: string;
   email: string;
-  role: 'parent' | 'student';
+  role: 'parent' | 'student' | 'admin';
   is_premium: boolean;
   coupon_applied: string | null;
   created_at: string;
@@ -57,6 +57,15 @@ export interface ExamAttempt {
   }[];
 }
 
+export interface AppReview {
+  id: string;
+  profileId: string;
+  authorEmail: string;
+  rating: number; // 0 to 5
+  feedbackText: string;
+  createdAt: string;
+}
+
 // -------------------------------------------------------------
 // 1. Firebase Initialization with Dynamic Detection
 // -------------------------------------------------------------
@@ -96,6 +105,7 @@ const LOCAL_MOCK_CHILDREN = "acu_mock_children";
 const LOCAL_MOCK_ACTIVE_USER = "acu_mock_active_user";
 const LOCAL_MOCK_DOCUMENTS = "acu_mock_documents";
 const LOCAL_MOCK_ATTEMPTS = "acu_mock_attempts";
+const LOCAL_MOCK_REVIEWS = "acu_mock_reviews";
 
 const getMockData = (key: string, defaultValue: any) => {
   if (typeof window === "undefined") return defaultValue;
@@ -140,10 +150,12 @@ export const dbService = {
       const currentPremiumCount = await this.getPremiumUserCount();
       const shouldBePremium = currentPremiumCount < 100;
       
+      const finalRole = email.toLowerCase().trim() === 'admin@acu.com' ? 'admin' : role;
+
       const profile: UserProfile = {
         id: uid,
         email,
-        role,
+        role: finalRole,
         is_premium: shouldBePremium,
         coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
         created_at: new Date().toISOString()
@@ -164,11 +176,13 @@ export const dbService = {
       const uid = "mock_user_" + Math.random().toString(36).substring(2, 9);
       const currentPremiumCount = await this.getPremiumUserCount();
       const shouldBePremium = currentPremiumCount < 100;
+      
+      const finalRole = emailLower === 'admin@acu.com' ? 'admin' : role;
 
       const profile: UserProfile = {
         id: uid,
         email: emailLower,
-        role,
+        role: finalRole,
         is_premium: shouldBePremium,
         coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
         created_at: new Date().toISOString()
@@ -459,5 +473,66 @@ export const dbService = {
     }
     allAttempts[profileId].push(attempt);
     saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+  },
+
+  async deleteExamAttempt(profileId: string, attemptId: string): Promise<void> {
+    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+    if (allAttempts[profileId]) {
+      allAttempts[profileId] = allAttempts[profileId].filter((a: ExamAttempt) => a.id !== attemptId);
+      saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+    }
+  },
+
+  // -------------------------------------------------------------
+  // App Reviews
+  // -------------------------------------------------------------
+  async submitAppReview(review: AppReview): Promise<void> {
+    const allReviews: AppReview[] = getMockData(LOCAL_MOCK_REVIEWS, []);
+    allReviews.push(review);
+    saveMockData(LOCAL_MOCK_REVIEWS, allReviews);
+  },
+
+  async getAllAppReviews(): Promise<AppReview[]> {
+    return getMockData(LOCAL_MOCK_REVIEWS, []);
+  },
+
+  // -------------------------------------------------------------
+  // Admin Methods
+  // -------------------------------------------------------------
+  async getAllProfiles(): Promise<UserProfile[]> {
+    const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+    return Object.values(profiles);
+  },
+
+  async deleteProfile(profileId: string): Promise<void> {
+    const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+    if (profiles[profileId]) {
+      delete profiles[profileId];
+      saveMockData(LOCAL_MOCK_PROFILES, profiles);
+    }
+  },
+
+  async deleteAppReview(reviewId: string): Promise<void> {
+    const reviews: AppReview[] = getMockData(LOCAL_MOCK_REVIEWS, []);
+    const filtered = reviews.filter((r) => r.id !== reviewId);
+    saveMockData(LOCAL_MOCK_REVIEWS, filtered);
+  },
+
+  async getSystemAnalytics(): Promise<{ totalUsers: number, totalDocuments: number, totalAttempts: number }> {
+    const profiles = Object.values(getMockData(LOCAL_MOCK_PROFILES, {}));
+    const documents = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+    
+    let attemptsCount = 0;
+    const attemptsDb = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+    for (const key of Object.keys(attemptsDb)) {
+      attemptsCount += attemptsDb[key].length || 0;
+    }
+
+    return {
+      totalUsers: profiles.length,
+      totalDocuments: documents.length,
+      totalAttempts: attemptsCount
+    };
   }
 };
+

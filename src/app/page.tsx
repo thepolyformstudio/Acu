@@ -1,11 +1,11 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { dbService, UserProfile, DocumentSource, ExamAttempt } from "@/lib/db";
+import { dbService, UserProfile, DocumentSource, ExamAttempt, AppReview } from "@/lib/db";
 import AuthCard from "@/components/AuthCard";
 import { 
   Sparkles, CheckCircle, Smartphone, ShieldCheck, 
-  LogOut, Settings, BarChart2, BookOpen, Layers, HelpCircle, UserCheck, FolderOpen 
+  LogOut, Settings, BarChart2, BookOpen, Layers, HelpCircle, UserCheck, FolderOpen, MessageSquare, Star
 } from "lucide-react";
 import { tryRestoreDriveSession, isDriveSignedIn } from "@/lib/googleDrive";
 
@@ -17,11 +17,14 @@ import AcuSlide from "@/components/AcuSlide";
 import AcuExam from "@/components/AcuExam";
 import AcuCard from "@/components/AcuCard";
 import PricingPage from "@/components/PricingPage";
+import AcuFeedback from "@/components/AcuFeedback";
+import AcuAdmin from "@/components/AcuAdmin";
 
 export default function Home() {
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "library" | "slides" | "exams" | "settings">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "library" | "slides" | "exams" | "settings" | "feedback" | "admin">("dashboard");
+  const [landingReviews, setLandingReviews] = useState<AppReview[]>([]);
   
   // Loaded documents & attempts shared across components
   const [documents, setDocuments] = useState<DocumentSource[]>([]);
@@ -35,6 +38,9 @@ export default function Home() {
       setActiveUser(user);
       if (user) {
         setActiveProfileId(user.id);
+        if (user.role === 'admin') {
+          setActiveTab("admin");
+        }
       }
       setLoading(false);
     });
@@ -43,6 +49,9 @@ export default function Home() {
     if (isDriveSignedIn()) {
       tryRestoreDriveSession().catch(() => {});
     }
+
+    // Fetch public landing reviews
+    dbService.getAllAppReviews().then(setLandingReviews).catch(console.error);
 
     return () => unsubscribe();
   }, []);
@@ -189,6 +198,44 @@ export default function Home() {
           </div>
         </div>
 
+        {/* Reviews Section */}
+        {landingReviews.length > 0 && (
+          <div className="max-w-6xl w-full mx-auto z-10 py-12 border-t border-slate-900/50 mt-12">
+            <div className="text-center mb-8">
+              <h2 className="text-2xl font-bold text-white mb-2">What Our Students Say</h2>
+              <p className="text-slate-400 text-sm">Real feedback from registered users</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {landingReviews.map(review => {
+                const firstNameRaw = review.authorEmail.split('@')[0].split(/[._-]/)[0];
+                const firstName = firstNameRaw.charAt(0).toUpperCase() + firstNameRaw.slice(1);
+                
+                return (
+                  <div key={review.id} className="glass-panel p-6 rounded-2xl flex flex-col justify-between">
+                    <div>
+                      <div className="flex gap-1 mb-3">
+                        {[1,2,3,4,5].map(star => (
+                          <Star key={star} size={14} className={review.rating >= star ? "fill-amber-400 text-amber-400" : "fill-slate-800 text-slate-800"} />
+                        ))}
+                      </div>
+                      <p className="text-slate-300 text-sm italic">"{review.feedbackText}"</p>
+                    </div>
+                    <div className="mt-4 pt-4 border-t border-slate-800/50 flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-violet-900/50 flex items-center justify-center text-xs font-bold text-violet-300">
+                        {firstName.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-white">{firstName}</p>
+                        <p className="text-[10px] text-slate-500">{review.createdAt}</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Footer */}
         <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-600 z-10 border-t border-slate-900 pt-6">
           © {new Date().getFullYear()} Acu Study Companion. Know Thyself.
@@ -238,53 +285,84 @@ export default function Home() {
         
         {/* Responsive Desktop Sidebar Navigation */}
         <aside className="hidden md:flex flex-col w-64 shrink-0 glass-panel p-4 rounded-2xl h-fit space-y-2">
-          <button
-            onClick={() => setActiveTab("dashboard")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === "dashboard"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-950/50"
-            }`}
-          >
-            <BookOpen size={18} />
-            AcuDash
-          </button>
-
-          <button
-            onClick={() => setActiveTab("library")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === "library"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-950/50"
-            }`}
-          >
-            <FolderOpen size={18} />
-            AcuLibrary
-          </button>
           
-          <button
-            onClick={() => setActiveTab("slides")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === "slides"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-950/50"
-            }`}
-          >
-            <Layers size={18} />
-            AcuSlide
-          </button>
+          {activeUser.role !== 'admin' && (
+            <>
+              <button
+                onClick={() => setActiveTab("dashboard")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === "dashboard"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+                }`}
+              >
+                <BookOpen size={18} />
+                AcuDash
+              </button>
 
-          <button
-            onClick={() => setActiveTab("exams")}
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
-              activeTab === "exams"
-                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
-                : "text-slate-400 hover:text-white hover:bg-slate-950/50"
-            }`}
-          >
-            <BarChart2 size={18} />
-            AcuExam
-          </button>
+              <button
+                onClick={() => setActiveTab("library")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === "library"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+                }`}
+              >
+                <FolderOpen size={18} />
+                AcuLibrary
+              </button>
+              
+              <button
+                onClick={() => setActiveTab("slides")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === "slides"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+                }`}
+              >
+                <Layers size={18} />
+                AcuSlide
+              </button>
+
+              <button
+                onClick={() => setActiveTab("exams")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === "exams"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+                }`}
+              >
+                <BarChart2 size={18} />
+                AcuExam
+              </button>
+
+              <button
+                onClick={() => setActiveTab("feedback")}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                  activeTab === "feedback"
+                    ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+                }`}
+              >
+                <MessageSquare size={18} />
+                Feedback
+              </button>
+            </>
+          )}
+
+          {activeUser.role === 'admin' && (
+            <button
+              onClick={() => setActiveTab("admin")}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all cursor-pointer ${
+                activeTab === "admin"
+                  ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-950/50"
+              }`}
+            >
+              <ShieldCheck size={18} />
+              Admin Dashboard
+            </button>
+          )}
 
           <div className="border-t border-slate-900 my-4 pt-4"></div>
 
@@ -300,13 +378,15 @@ export default function Home() {
             Settings
           </button>
 
-          <button
-            onClick={() => setShowPricing(true)}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-950/50 transition-all cursor-pointer"
-          >
-            <Sparkles size={18} />
-            Pricing
-          </button>
+          {activeUser.role !== 'admin' && (
+            <button
+              onClick={() => setShowPricing(true)}
+              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-slate-950/50 transition-all cursor-pointer"
+            >
+              <Sparkles size={18} />
+              Pricing
+            </button>
+          )}
         </aside>
 
         {/* Main Stage Panel */}
@@ -350,50 +430,87 @@ export default function Home() {
               onRefresh={refreshData}
             />
           )}
+          {activeTab === "feedback" && activeUser.role !== 'admin' && (
+            <AcuFeedback 
+              user={activeUser}
+            />
+          )}
+          {activeTab === "admin" && (
+            <AcuAdmin 
+              user={activeUser}
+            />
+          )}
         </main>
       </div>
 
       {/* Bottom Sticky Mobile Navigation (Mobile-First UI) */}
       <nav className="sticky bottom-0 z-30 md:hidden glass-panel border-x-0 border-b-0 py-2 px-4 flex items-center justify-around">
-        <button
-          onClick={() => setActiveTab("dashboard")}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === "dashboard" ? "text-violet-400" : "text-slate-500"
-          }`}
-        >
-          <BookOpen size={18} />
-          <span className="text-[10px] font-semibold">AcuDash</span>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("library")}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === "library" ? "text-violet-400" : "text-slate-500"
-          }`}
-        >
-          <FolderOpen size={18} />
-          <span className="text-[10px] font-semibold">Library</span>
-        </button>
         
-        <button
-          onClick={() => setActiveTab("slides")}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === "slides" ? "text-violet-400" : "text-slate-500"
-          }`}
-        >
-          <Layers size={18} />
-          <span className="text-[10px] font-semibold">AcuSlide</span>
-        </button>
+        {activeUser.role !== 'admin' && (
+          <>
+            <button
+              onClick={() => setActiveTab("dashboard")}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === "dashboard" ? "text-violet-400" : "text-slate-500"
+              }`}
+            >
+              <BookOpen size={18} />
+              <span className="text-[10px] font-semibold">AcuDash</span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab("exams")}
-          className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === "exams" ? "text-violet-400" : "text-slate-500"
-          }`}
-        >
-          <BarChart2 size={18} />
-          <span className="text-[10px] font-semibold">AcuExam</span>
-        </button>
+            <button
+              onClick={() => setActiveTab("library")}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === "library" ? "text-violet-400" : "text-slate-500"
+              }`}
+            >
+              <FolderOpen size={18} />
+              <span className="text-[10px] font-semibold">Library</span>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab("slides")}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === "slides" ? "text-violet-400" : "text-slate-500"
+              }`}
+            >
+              <Layers size={18} />
+              <span className="text-[10px] font-semibold">AcuSlide</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("exams")}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === "exams" ? "text-violet-400" : "text-slate-500"
+              }`}
+            >
+              <BarChart2 size={18} />
+              <span className="text-[10px] font-semibold">AcuExam</span>
+            </button>
+            
+            <button
+              onClick={() => setActiveTab("feedback")}
+              className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+                activeTab === "feedback" ? "text-violet-400" : "text-slate-500"
+              }`}
+            >
+              <MessageSquare size={18} />
+              <span className="text-[10px] font-semibold">Feedback</span>
+            </button>
+          </>
+        )}
+
+        {activeUser.role === 'admin' && (
+          <button
+            onClick={() => setActiveTab("admin")}
+            className={`flex flex-col items-center gap-1 p-2 rounded-xl transition-all cursor-pointer ${
+              activeTab === "admin" ? "text-violet-400" : "text-slate-500"
+            }`}
+          >
+            <ShieldCheck size={18} />
+            <span className="text-[10px] font-semibold">Admin</span>
+          </button>
+        )}
 
         <button
           onClick={() => setActiveTab("settings")}

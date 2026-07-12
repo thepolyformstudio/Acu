@@ -50,9 +50,9 @@ export async function generateChapterMap(
   // Use the standard client SDK
   const ai = new GoogleGenerativeAI(apiKey);
   
-  // We use gemini-2.5-flash-lite as the default for lightning-fast parsing tasks
+  // We use gemini-flash-latest-lite as the default for lightning-fast parsing tasks
   const model = ai.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.1
@@ -94,7 +94,7 @@ export async function extractChapterTitle(
     if (apiKey) {
       const ai = new GoogleGenerativeAI(apiKey);
       const model = ai.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
+        model: "gemini-flash-latest",
         generationConfig: { temperature: 0.1 }
       });
 
@@ -214,7 +214,7 @@ export async function generateSlideOutline(
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.3
@@ -290,7 +290,7 @@ export async function generateExamPaper(
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.2
@@ -360,7 +360,7 @@ export async function gradeWrittenAnswer(
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: {
       responseMimeType: "application/json",
       temperature: 0.1
@@ -423,7 +423,7 @@ export async function generateBriefingNotes(sourceText: string, title: string): 
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
@@ -453,7 +453,7 @@ export async function generateFAQSheet(sourceText: string, title: string): Promi
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
@@ -483,7 +483,7 @@ export async function generateTimeline(sourceText: string, title: string): Promi
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
@@ -515,13 +515,51 @@ export async function generatePodcastScript(sourceText: string, title: string): 
 
   const ai = new GoogleGenerativeAI(apiKey);
   const model = ai.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-flash-latest",
     generationConfig: { responseMimeType: "application/json", temperature: 0.3 }
   });
 
   const prompt = `Generate a lively dialogue podcast script for "${title}" based on this text:\n\n${sourceText}`;
   const result = await model.generateContent([
     { text: PODCAST_SYSTEM_PROMPT },
+    { text: prompt }
+  ]);
+  return JSON.parse(result.response.text().trim());
+}
+
+// -------------------------------------------------------------
+// 8. MCQ Generation
+// -------------------------------------------------------------
+const MCQ_SYSTEM_PROMPT = `
+You are an expert curriculum designer.
+Generate 25 to 50 high-quality Multiple Choice Questions (MCQs) covering the provided chapter text comprehensively.
+Ensure the questions vary in difficulty and test both factual recall and conceptual understanding.
+Output strictly a valid JSON array.
+
+JSON Schema:
+[
+  {
+    "question": "What is the primary function of mitochondria?",
+    "options": ["Respiration", "Digestion", "Photosynthesis", "Circulation"],
+    "correctAnswer": "Respiration",
+    "explanation": "Mitochondria are often referred to as the powerhouse of the cell, responsible for cellular respiration."
+  }
+]
+`;
+
+export async function generateMCQs(sourceText: string, title: string): Promise<any> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) throw new Error("Gemini API Key missing.");
+
+  const ai = new GoogleGenerativeAI(apiKey);
+  const model = ai.getGenerativeModel({
+    model: "gemini-flash-latest",
+    generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
+  });
+
+  const prompt = `Generate 25-50 high quality MCQs for the chapter "${title}" using this source text:\n\n${sourceText}`;
+  const result = await model.generateContent([
+    { text: MCQ_SYSTEM_PROMPT },
     { text: prompt }
   ]);
   return JSON.parse(result.response.text().trim());

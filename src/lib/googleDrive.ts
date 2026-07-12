@@ -41,6 +41,7 @@ export async function signInToDrive(): Promise<boolean> {
   try {
     const auth = getFirebaseAuth();
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'consent' }); // Force consent screen to guarantee Drive scopes
     SCOPES.forEach((s) => provider.addScope(s));
 
     const result = await signInWithPopup(auth, provider);
@@ -102,6 +103,11 @@ async function findOrCreateFolder(name: string, parent_id?: string): Promise<str
   const resp = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id)`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error("findOrCreateFolder failed during search:", errText);
+    throw new Error("Drive search failed: " + errText);
+  }
   const data = await resp.json();
 
   if (data.files && data.files.length > 0) {
@@ -124,6 +130,11 @@ async function findOrCreateFolder(name: string, parent_id?: string): Promise<str
     },
     body: JSON.stringify(body),
   });
+  if (!createResp.ok) {
+    const errText = await createResp.text();
+    console.error("findOrCreateFolder failed during creation:", errText);
+    throw new Error("Drive creation failed: " + errText);
+  }
   const created = await createResp.json();
   folderIdCache[name] = created.id;
   return created.id;
@@ -153,33 +164,42 @@ async function uploadOrUpdateFile(
   parent_id: string,
   mimeType = "application/json"
 ): Promise<void> {
-  const existingId = await findFileByName(name, parent_id);
+  let fileId = await findFileByName(name, parent_id);
 
-  if (existingId) {
-    // Update existing file
-    await fetch(
-      `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=media`,
-      {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": mimeType,
-        },
-        body: content,
-      }
-    );
-  } else {
-    // Create new file with metadata
+  if (!fileId) {
+    // 1. Create the empty file with metadata
     const metadata = { name, parents: [parent_id] };
-    const form = new FormData();
-    form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
-    form.append("file", new Blob([content], { type: mimeType }));
-
-    await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+    const createResp = await fetch("https://www.googleapis.com/drive/v3/files", {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-      body: form,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(metadata),
     });
+    
+    if (!createResp.ok) {
+      throw new Error("Failed to create file metadata: " + await createResp.text());
+    }
+    const created = await createResp.json();
+    fileId = created.id;
+  }
+
+  // 2. Upload the actual content to the file
+  const patchResp = await fetch(
+    `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": mimeType,
+      },
+      body: content,
+    }
+  );
+  
+  if (!patchResp.ok) {
+    throw new Error("Failed to upload file content: " + await patchResp.text());
   }
 }
 
@@ -242,15 +262,7 @@ export async function saveDocumentToDrive(doc: any): Promise<void> {
     const root = await getAppRootFolderId();
     const docsFolder = await findOrCreateFolder("Documents", root);
     const fileName = `${doc.id}.json`;
-    const lightweight = {
-      id: doc.id,
-      name: doc.name,
-      subject: doc.subject,
-      chapterMap: doc.chapterMap,
-      created_at: doc.created_at,
-      pageCount: doc.pages?.length || 0,
-    };
-    await uploadOrUpdateFile(fileName, JSON.stringify(lightweight, null, 2), docsFolder);
+    await uploadOrUpdateFile(fileName, JSON.stringify(doc), docsFolder);
     updateStatus({ syncing: false, lastSync: new Date().toISOString() });
   } catch (err: any) {
     console.error("Drive sync (document) failed:", err);
@@ -335,18 +347,35 @@ export async function loadExamAttemptsFromDrive(profileId: string): Promise<any[
 
 // -- Notes / Generated Content -----------------------------------------------
 
-export async function saveNotesToDrive(docId: string, chapterName: string, type: string, content: any): Promise<void> {
+export async function saveNotesToDrive(subject: string, chapterName: string, type: string, content: any): Promise<void> {
   if (!isDriveSignedIn()) return;
   try {
     updateStatus({ syncing: true, error: null });
     const root = await getAppRootFolderId();
     const folder = await findOrCreateFolder("Notes", root);
+    const safeSubject = (subject || "General").replace(/[^a-zA-Z0-9]/g, "_").substring(0, 30);
     const safeChapter = chapterName.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 60);
-    const fileName = `${docId}_${safeChapter}_${type}.json`;
+    const fileName = `${safeSubject}_${safeChapter}_${type}.json`;
     await uploadOrUpdateFile(fileName, JSON.stringify(content, null, 2), folder);
     updateStatus({ syncing: false, lastSync: new Date().toISOString() });
   } catch (err: any) {
     console.error("Drive sync (notes) failed:", err);
     updateStatus({ syncing: false, error: err.message || "Drive sync failed" });
+  }
+}
+
+export async function loadNotesFromDrive(subject: string, chapterName: string, type: string): Promise<any | null> {
+  if (!isDriveSignedIn()) return null;
+  try {
+    const root = await getAppRootFolderId();
+    const folder = await findOrCreateFolder("Notes", root);
+    const safeSubject = (subject || "General").replace(/[^a-zA-Z0-9]/g, "_").substring(0, 30);
+    const safeChapter = chapterName.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 60);
+    const fileName = `${safeSubject}_${safeChapter}_${type}.json`;
+    const content = await readFileByName(fileName, folder);
+    return content ? JSON.parse(content) : null;
+  } catch (err) {
+    console.error("Drive load (notes) failed:", err);
+    return null;
   }
 }

@@ -79,6 +79,144 @@ function checkAndRecordRateLimit() {
 }
 
 async function safeGenerateContent(model: any, request: any) {
+  const apiKey = getGeminiApiKey();
+  if (apiKey === "AIzaSyMockKeyForTutorial") {
+    let requestText = "";
+    if (typeof request === "string") {
+      requestText = request;
+    } else if (Array.isArray(request)) {
+      requestText = request.map((r: any) => r.text || "").join("\n");
+    }
+
+    let mockText = "";
+    if (requestText.includes("TAXONOMY_SYSTEM_PROMPT") || requestText.includes("Table of Contents") || requestText.includes("Analyze this Table of Contents")) {
+      mockText = JSON.stringify([
+        {
+          "name": "Chapter 1: Nutrition in Plants",
+          "summary": "Explains autotrophic and heterotrophic modes of nutrition, photosynthesis, and how nutrients are replenished in the soil.",
+          "startPage": 1,
+          "endPage": 10
+        }
+      ]);
+    } else if (requestText.includes("Identify the chapter title") || requestText.includes("given the first few pages")) {
+      mockText = "Nutrition in Plants";
+    } else if (requestText.includes("SLIDES_SYSTEM_PROMPT") || requestText.includes("presentation slide outline") || requestText.includes("Generate a presentation slide outline")) {
+      mockText = JSON.stringify([
+        {
+          "id": "slide_1",
+          "layout": "title",
+          "title": "Nutrition in Plants",
+          "subtitle": "Chapter 1 Overview"
+        },
+        {
+          "id": "slide_2",
+          "layout": "bullets",
+          "title": "Photosynthesis",
+          "bullets": [
+            "Plants synthesize food using sunlight, water, and CO2.",
+            "Chlorophyll in leaves traps solar energy.",
+            "Oxygen is released as a byproduct."
+          ]
+        }
+      ]);
+    } else if (requestText.includes("EXAM_SYSTEM_PROMPT") || requestText.includes("question paper") || requestText.includes("Generate a question paper")) {
+      mockText = JSON.stringify({
+        "title": "Nutrition in Plants Test",
+        "sections": [
+          {
+            "section_letter": "A",
+            "instructions": "Answer all multiple choice questions",
+            "marks_per_question": 1,
+            "questions": [
+              {
+                "question_text": "Which of the following is a parasitic plant?",
+                "question_type": "MCQ",
+                "marks": 1,
+                "blooms_level": "Remembering",
+                "options": [
+                  {"key": "A", "text": "Cuscuta (Amarbel)"},
+                  {"key": "B", "text": "Rose"},
+                  {"key": "C", "text": "Mango"},
+                  {"key": "D", "text": "Algae"}
+                ],
+                "model_answer": "A",
+                "grading_rubric": "1 mark for selecting A"
+              }
+            ]
+          }
+        ]
+      });
+    } else if (requestText.includes("GRADER_SYSTEM_PROMPT") || requestText.includes("Evaluate this response")) {
+      mockText = JSON.stringify({
+        "marks_awarded": 1.0,
+        "justification": "Correct choice of Cuscuta.",
+        "feedback_details": {
+          "correct_points": ["Correct option chosen"],
+          "incorrect_points": [],
+          "suggestions": ["Great job! Keep revising."]
+        }
+      });
+    } else if (requestText.includes("BRIEFING_SYSTEM_PROMPT") || requestText.includes("briefing notes") || requestText.includes("Generate briefing notes")) {
+      mockText = JSON.stringify({
+        "title": "Topic Briefing: Nutrition in Plants",
+        "chapters": [
+          {
+            "title": "Introduction",
+            "content": "All living organisms require food. Plants can make their food themselves but animals including humans cannot.",
+            "takeaways": ["Plants are autotrophs.", "Animals are heterotrophs."]
+          }
+        ],
+        "glossary": [
+          { "term": "Autotrophic", "definition": "Mode of nutrition in which organisms make food themselves." }
+        ]
+      });
+    } else if (requestText.includes("FAQ_SYSTEM_PROMPT") || requestText.includes("FAQ Sheet") || requestText.includes("Generate FAQ Sheet")) {
+      mockText = JSON.stringify({
+        "faqs": [
+          { "question": "Why are plants green?", "answer": "Plants are green because of the pigment chlorophyll, which absorbs sunlight for photosynthesis." }
+        ]
+      });
+    } else if (requestText.includes("TIMELINE_SYSTEM_PROMPT") || requestText.includes("chronological timeline") || requestText.includes("Generate chronological timeline")) {
+      mockText = JSON.stringify({
+        "timeline": [
+          { "timeLabel": "Step 1", "title": "Water absorption", "description": "Water and minerals are absorbed by roots." },
+          { "timeLabel": "Step 2", "title": "Carbon dioxide entry", "description": "Carbon dioxide enters leaves through stomata." },
+          { "timeLabel": "Step 3", "title": "Light absorption", "description": "Chlorophyll traps solar energy." }
+        ]
+      });
+    } else if (requestText.includes("PODCAST_SYSTEM_PROMPT") || requestText.includes("dialogue podcast script") || requestText.includes("Generate a lively dialogue")) {
+      mockText = JSON.stringify({
+        "script": [
+          { "speaker": "Host A", "text": "Welcome! Today we are learning about plant nutrition." },
+          { "speaker": "Host B", "text": "Yes, did you know some plants are parasitic like Cuscuta?" }
+        ]
+      });
+    } else if (requestText.includes("MCQ_SYSTEM_PROMPT") || requestText.includes("MCQs") || requestText.includes("Generate 25-50 high quality MCQs")) {
+      mockText = JSON.stringify([
+        {
+          "question": "Which of the following is a parasite?",
+          "options": ["Cuscuta", "Algae", "Pitcher plant", "Lichen"],
+          "correctAnswer": "Cuscuta",
+          "explanation": "Cuscuta is a parasitic plant that climbs on other trees to obtain nutrition."
+        },
+        {
+          "question": "The food factory of a plant is its:",
+          "options": ["Leaves", "Roots", "Stem", "Flowers"],
+          "correctAnswer": "Leaves",
+          "explanation": "Leaves contain chlorophyll and are the primary site of photosynthesis."
+        }
+      ]);
+    } else {
+      mockText = "Mock response content";
+    }
+
+    return {
+      response: {
+        text: () => mockText
+      }
+    };
+  }
+
   checkAndRecordRateLimit();
 
   try {

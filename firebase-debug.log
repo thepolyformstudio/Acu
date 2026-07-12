@@ -1,0 +1,91 @@
+[debug] [2026-07-12T09:46:02.989Z] ----------------------------------------------------------------------
+[debug] [2026-07-12T09:46:02.990Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-12T09:46:02.991Z] CLI Version:   15.23.0
+[debug] [2026-07-12T09:46:02.991Z] Platform:      win32
+[debug] [2026-07-12T09:46:02.991Z] Node Version:  v24.16.0
+[debug] [2026-07-12T09:46:02.991Z] Detected Agent: antigravity
+[debug] [2026-07-12T09:46:02.991Z] Time:          Sun Jul 12 2026 15:16:02 GMT+0530 (India Standard Time)
+[debug] [2026-07-12T09:46:02.991Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-12T09:46:04.411Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-12T09:46:04.411Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-12T09:46:04.411Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-12T09:46:04.421Z] Checked if tokens are valid: false, expires at: 1783849950020
+[debug] [2026-07-12T09:46:04.421Z] Checked if tokens are valid: false, expires at: 1783849950020
+[debug] [2026-07-12T09:46:04.421Z] > refreshing access token with scopes: []
+[debug] [2026-07-12T09:46:04.422Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-12T09:46:04.422Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-12T09:46:04.667Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-12T09:46:04.667Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-12T09:46:04.677Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-12T09:46:04.677Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-12T09:46:04.677Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-12T09:46:06.222Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-12T09:46:06.223Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-12T09:46:06.224Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:06.224Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:06.225Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-12T09:46:06.734Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-12T09:46:06.734Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-12T09:46:08.292Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:08.292Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:08.292Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-12T09:46:09.611Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-12T09:46:09.611Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-12T09:46:09.611Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:09.611Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:09.611Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-12T09:46:10.376Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-12T09:46:10.376Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-12T09:46:10.376Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:10.376Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:10.377Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-12T09:46:12.615Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-12T09:46:12.616Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-12T09:46:16.061Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:16.062Z] Checked if tokens are valid: true, expires at: 1783853163667
+[debug] [2026-07-12T09:46:16.062Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-12T09:46:17.341Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-12T09:46:17.342Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ▲ Next.js 16.2.10 (Turbopack)
+
+[info] - Environments: .env
+
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 7.5s
+
+[info]   Running TypeScript ...
+
+[info] Failed to type check.
+
+
+[info] ./src/lib/pdfParser.ts:28:19
+Type error: Property 'str' does not exist on type 'TextItem | TextMarkedContent'.
+  Property 'str' does not exist on type 'TextMarkedContent'.
+
+  26 |       let lastY = null;
+  27 |       for (const item of textContent.items) {
+> 28 |         if (!item.str) continue;
+     |                   ^
+  29 |         const currentY = item.transform[5];
+  30 |         if (lastY !== null && Math.abs(currentY - lastY) > 4) {
+  31 |           pageText += '\n';
+
+[info] Next.js build worker exited with code: 1 and signal: null
+
+[debug] [2026-07-12T09:46:30.691Z] Error: ENOENT: no such file or directory, open 'C:\Users\VI\SmartGuide\.next\export-marker.json'
+[error] 
+[error] Error: An unexpected error has occurred.

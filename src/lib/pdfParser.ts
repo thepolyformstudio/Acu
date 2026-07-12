@@ -24,7 +24,7 @@ export async function extractTextPageByPage(
       // Combine text items on the page, adding newlines when Y coordinate changes significantly
       let pageText = '';
       let lastY = null;
-      for (const item of textContent.items) {
+      for (const item of textContent.items as any[]) {
         if (!item.str) continue;
         const currentY = item.transform[5];
         if (lastY !== null && Math.abs(currentY - lastY) > 4) {

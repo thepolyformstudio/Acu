@@ -175,7 +175,9 @@ Both deployed to Firebase Hosting: https://acudex.web.app
 
 ### Git & Deploy
 - Verified clean build (`npx tsc --noEmit`).
-- Committed changes to Git.
+- Implemented split Question Paper and Answer Key structure for both generated Exams ([AcuExam.tsx](file:///e:/Antigravity/SmartGuide/src/components/AcuExam.tsx)) and Practice MCQs ([AcuSlide.tsx](file:///e:/Antigravity/SmartGuide/src/components/AcuSlide.tsx)) to keep questions and keys on separate pages.
+- Committed all changes to Git.
+- Deployed successfully to Firebase Hosting URL: https://acudex.web.app.
 
 ---
 

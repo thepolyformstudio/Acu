@@ -545,6 +545,10 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
               margin-bottom: 12px;
               font-size: 13px;
             }
+            .page-break {
+              page-break-before: always;
+              break-before: page;
+            }
             @media print {
               body {
                 padding: 0;
@@ -648,19 +652,38 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
 
   const handleExportMcqPDF = () => {
     if (!mcqs) return;
-    const html = mcqs.map((m: any, idx: number) => `
+    
+    // 1. Generate the MCQs Practice Sheet (questions only)
+    const questionsHTML = mcqs.map((m: any, idx: number) => `
       <div class="mcq-item">
         <div class="mcq-q">${idx + 1}. ${m.question}</div>
         ${(m.options || []).map((opt: string, oIdx: number) => `
           <div class="mcq-option">(${String.fromCharCode(65 + oIdx)}) ${opt}</div>
         `).join("")}
+      </div>
+    `).join("");
+
+    // 2. Generate the MCQ Answer Key & Explanations
+    const answersHTML = mcqs.map((m: any, idx: number) => `
+      <div class="mcq-item">
+        <div class="mcq-q">${idx + 1}. ${m.question}</div>
         <div class="mcq-ans">Correct Answer: ${m.correctAnswer}</div>
         <div class="mcq-exp">Explanation: ${m.explanation}</div>
       </div>
     `).join("");
 
+    const combinedHTML = `
+      <div class="questions-section">
+        ${questionsHTML}
+      </div>
+      <div class="page-break">
+        <h1 style="margin-top: 40px; border-top: 2px dashed #cbd5e1; padding-top: 20px;">Answer Key & Explanations</h1>
+        ${answersHTML}
+      </div>
+    `;
+
     const chapterName = selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || "Study Guide";
-    exportToPDF(`${chapterName} - Practice MCQs`, html);
+    exportToPDF(`${chapterName} - Practice MCQs`, combinedHTML);
   };
 
   // Force-regenerate artifact by bypassing local state and drive cache

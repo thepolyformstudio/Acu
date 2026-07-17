@@ -540,6 +540,10 @@ export default function AcuExam({
               margin-top: 8px;
               border-radius: 6px;
             }
+            .page-break {
+              page-break-before: always;
+              break-before: page;
+            }
             @media print {
               body {
                 padding: 0;
@@ -563,7 +567,9 @@ export default function AcuExam({
 
   const handleExportExamPDF = () => {
     if (!activeExam) return;
-    const html = activeExam.sections.map((sec: any) => {
+
+    // 1. Generate the Question Paper HTML (without answers & rubrics)
+    const questionPaperHTML = activeExam.sections.map((sec: any) => {
       const qHTML = sec.questions.map((q: any, idx: number) => {
         let qContent = `<div class="mcq-q">Q${idx + 1} [${q.marks} Mark(s) - Bloom's: ${q.blooms_level || "Understanding"}]: ${q.question_text}</div>`;
         if (q.question_type === "MCQ" && q.options) {
@@ -571,11 +577,6 @@ export default function AcuExam({
             <div class="mcq-option">(${o.key}) ${o.text}</div>
           `).join("");
         }
-
-        qContent += `
-          <div class="mcq-ans" style="margin-top:8px;">Model Answer / Guideline: <span style="font-weight:normal;color:#334155;">${q.model_answer}</span></div>
-          <div class="grading-rubric">Grading Rubric: ${q.grading_rubric}</div>
-        `;
         return `<div class="mcq-item">${qContent}</div>`;
       }).join("");
 
@@ -588,7 +589,37 @@ export default function AcuExam({
       `;
     }).join("");
 
-    exportToPDF(`${activeExam.title} - Question Paper & Answer Key`, html);
+    // 2. Generate the Answer Key HTML (with answers & rubrics)
+    const answerKeyHTML = activeExam.sections.map((sec: any) => {
+      const aHTML = sec.questions.map((q: any, idx: number) => {
+        let qContent = `<div class="mcq-q">Q${idx + 1}: ${q.question_text}</div>`;
+        qContent += `
+          <div class="mcq-ans" style="margin-top:8px;">Model Answer / Guideline: <span style="font-weight:normal;color:#334155;">${q.model_answer}</span></div>
+          <div class="grading-rubric">Grading Rubric: ${q.grading_rubric}</div>
+        `;
+        return `<div class="mcq-item">${qContent}</div>`;
+      }).join("");
+
+      return `
+        <div class="section">
+          <h2>Section ${sec.section_letter}: ${sec.section_title || "Questions"} — Answer Key</h2>
+          ${aHTML}
+        </div>
+      `;
+    }).join("");
+
+    // Combine both with a page break element
+    const combinedHTML = `
+      <div class="question-paper-section">
+        ${questionPaperHTML}
+      </div>
+      <div class="page-break">
+        <h1 style="margin-top: 40px; border-top: 2px dashed #cbd5e1; padding-top: 20px;">Answer Key & Grading Rubrics</h1>
+        ${answerKeyHTML}
+      </div>
+    `;
+
+    exportToPDF(`${activeExam.title} - Question Paper & Answer Key`, combinedHTML);
   };
 
   const handlePauseToggle = () => {

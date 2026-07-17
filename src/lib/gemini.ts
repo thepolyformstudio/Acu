@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { BoardBlueprint, getSubjectSpecificInstructions } from "@/lib/boardBlueprints";
 
 // Retrieves the user's Gemini key securely from local storage
 export function getGeminiApiKey(): string {
@@ -429,7 +430,8 @@ JSON Schema:
 
 export async function generateSlideOutline(
   sourceText: string,
-  title: string
+  title: string,
+  subject: string = ""
 ): Promise<any[]> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
@@ -449,6 +451,8 @@ export async function generateSlideOutline(
   
   [TEXT PASSAGE]
   ${sourceText}
+
+  ${getSubjectSpecificInstructions(subject)}
   `;
 
   const result = await safeGenerateContent(model, [
@@ -505,7 +509,9 @@ export async function generateExamPaper(
   grade: string,
   board: string,
   distribution: { mcq: number; vsa: number; sa: number; la: number },
-  totalMarks: number
+  totalMarks: number,
+  subject: string = "",
+  blueprint: BoardBlueprint | null = null
 ): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
@@ -519,26 +525,63 @@ export async function generateExamPaper(
     }
   });
 
-  const sectionsInstructions = [];
-  if (distribution.mcq > 0) {
-    const marksPerMcq = (distribution.vsa === 0 && distribution.sa === 0 && distribution.la === 0)
-      ? (totalMarks / distribution.mcq)
-      : 1;
-    sectionsInstructions.push(`Section A: ${distribution.mcq} MCQs (${marksPerMcq.toFixed(1)} mark(s) each).`);
-  }
-  if (distribution.vsa > 0) sectionsInstructions.push(`Section B: ${distribution.vsa} Very Short Answer questions (2 marks each).`);
-  if (distribution.sa > 0) sectionsInstructions.push(`Section C: ${distribution.sa} Short Answer questions (3 marks each).`);
-  if (distribution.la > 0) sectionsInstructions.push(`Section D: ${distribution.la} Long Answer questions (5 marks each).`);
+  // Get subject-specific instructions (works for both blueprint and legacy modes)
+  const subjectRules = getSubjectSpecificInstructions(subject);
 
-  const prompt = `
-  Generate a question paper titled "${examTitle}" for ${grade} (${board} standard blueprint).
-  
-  [SECTIONS TO INCLUDE]
-  ${sectionsInstructions.join("\n")}
+  let prompt: string;
+
+  if (blueprint) {
+    // --- Blueprint Mode: inject exact section structure from the blueprint ---
+    const blueprintSections = blueprint.sections.map((s) => {
+      const qtDescriptions = s.questionTypes.map((qt) => {
+        let desc = `${qt.count} ${qt.type} × ${qt.marksPerQuestion}m`;
+        if (qt.negativeMarking) desc += ` (${qt.negativeMarking}m for incorrect)`;
+        return desc;
+      }).join(", ");
+      return `${s.sectionLetter}. ${s.sectionTitle}: ${qtDescriptions}. Total: ${s.totalMarks}m. Instructions: ${s.instructions}`;
+    }).join("\n  ");
+
+    prompt = `
+  Generate a question paper titled "${examTitle}" for ${grade}.
+
+  [BOARD BLUEPRINT — ${blueprint.boardName} ${blueprint.academicYear}]
+  Follow this EXACT structure:
+  ${blueprintSections}
+
+  Total: ${blueprint.totalTheoryMarks} marks, ${blueprint.totalQuestions} questions.
+  ${blueprint.competencyBasedPercent ? `Competency-based questions (case studies, source-based, application) must be at least ${blueprint.competencyBasedPercent}% of the paper.` : ""}
+  ${blueprint.negativeMarking ? "Negative marking applies — mention this in section instructions." : ""}
+
+  ${subjectRules}
 
   [CONTEXT PASSAGES]
   ${sourceText}
   `;
+  } else {
+    // --- Legacy Mode: use the old section distribution heuristic ---
+    const sectionsInstructions = [];
+    if (distribution.mcq > 0) {
+      const marksPerMcq = (distribution.vsa === 0 && distribution.sa === 0 && distribution.la === 0)
+        ? (totalMarks / distribution.mcq)
+        : 1;
+      sectionsInstructions.push(`Section A: ${distribution.mcq} MCQs (${marksPerMcq.toFixed(1)} mark(s) each).`);
+    }
+    if (distribution.vsa > 0) sectionsInstructions.push(`Section B: ${distribution.vsa} Very Short Answer questions (2 marks each).`);
+    if (distribution.sa > 0) sectionsInstructions.push(`Section C: ${distribution.sa} Short Answer questions (3 marks each).`);
+    if (distribution.la > 0) sectionsInstructions.push(`Section D: ${distribution.la} Long Answer questions (5 marks each).`);
+
+    prompt = `
+  Generate a question paper titled "${examTitle}" for ${grade} (${board} standard).
+
+  [SECTIONS TO INCLUDE]
+  ${sectionsInstructions.join("\n")}
+
+  ${subjectRules}
+
+  [CONTEXT PASSAGES]
+  ${sourceText}
+  `;
+  }
 
   const result = await safeGenerateContent(model, [
     { text: EXAM_SYSTEM_PROMPT },
@@ -551,8 +594,9 @@ export async function generateExamPaper(
 // -------------------------------------------------------------
 // 4. AcuExam Grader Prompt
 // -------------------------------------------------------------
-const GRADER_SYSTEM_PROMPT = `
-You are an objective CBSE Board examiner grading student answers.
+function buildGraderSystemPrompt(gradingStandard: string = "CBSE Board"): string {
+  return `
+You are an objective ${gradingStandard} examiner grading student answers.
 Analyze the student's answer against the Model Answer and the step-by-step Grading Rubric.
 Allocate marks precisely based on the rubric guidelines (decimal values like 0.5 increments are allowed, from 0 to max_marks).
 Provide an objective justification explaining exactly why marks were awarded or deducted.
@@ -569,13 +613,15 @@ JSON Schema:
   }
 }
 `;
+}
 
 export async function gradeWrittenAnswer(
   questionText: string,
   maxMarks: number,
   modelAnswer: string,
   gradingRubric: string,
-  studentAnswer: string
+  studentAnswer: string,
+  gradingStandard: string = "CBSE Board"
 ): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
@@ -607,7 +653,7 @@ export async function gradeWrittenAnswer(
   `;
 
   const result = await safeGenerateContent(model, [
-    { text: GRADER_SYSTEM_PROMPT },
+    { text: buildGraderSystemPrompt(gradingStandard) },
     { text: prompt }
   ]);
 
@@ -639,7 +685,11 @@ JSON Output Schema:
 }
 `;
 
-export async function generateBriefingNotes(sourceText: string, title: string): Promise<any> {
+export async function generateBriefingNotes(
+  sourceText: string,
+  title: string,
+  subject: string = ""
+): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
 
@@ -649,7 +699,7 @@ export async function generateBriefingNotes(sourceText: string, title: string): 
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
-  const prompt = `Generate briefing notes for "${title}" based on this text:\n\n${sourceText}`;
+  const prompt = `Generate briefing notes for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const result = await safeGenerateContent(model, [
     { text: BRIEFING_SYSTEM_PROMPT },
     { text: prompt }
@@ -669,7 +719,11 @@ JSON Output Schema:
 }
 `;
 
-export async function generateFAQSheet(sourceText: string, title: string): Promise<any> {
+export async function generateFAQSheet(
+  sourceText: string,
+  title: string,
+  subject: string = ""
+): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
 
@@ -679,7 +733,7 @@ export async function generateFAQSheet(sourceText: string, title: string): Promi
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
-  const prompt = `Generate FAQ Sheet for "${title}" based on this text:\n\n${sourceText}`;
+  const prompt = `Generate FAQ Sheet for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const result = await safeGenerateContent(model, [
     { text: FAQ_SYSTEM_PROMPT },
     { text: prompt }
@@ -699,7 +753,11 @@ JSON Output Schema:
 }
 `;
 
-export async function generateTimeline(sourceText: string, title: string): Promise<any> {
+export async function generateTimeline(
+  sourceText: string,
+  title: string,
+  subject: string = ""
+): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
 
@@ -709,7 +767,7 @@ export async function generateTimeline(sourceText: string, title: string): Promi
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
-  const prompt = `Generate chronological timeline or process phases for "${title}" based on this text:\n\n${sourceText}`;
+  const prompt = `Generate chronological timeline or process phases for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const result = await safeGenerateContent(model, [
     { text: TIMELINE_SYSTEM_PROMPT },
     { text: prompt }
@@ -731,7 +789,11 @@ JSON Output Schema:
 }
 `;
 
-export async function generatePodcastScript(sourceText: string, title: string): Promise<any> {
+export async function generatePodcastScript(
+  sourceText: string,
+  title: string,
+  subject: string = ""
+): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
 
@@ -741,7 +803,7 @@ export async function generatePodcastScript(sourceText: string, title: string): 
     generationConfig: { responseMimeType: "application/json", temperature: 0.3 }
   });
 
-  const prompt = `Generate a lively dialogue podcast script for "${title}" based on this text:\n\n${sourceText}`;
+  const prompt = `Generate a lively dialogue podcast script for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const result = await safeGenerateContent(model, [
     { text: PODCAST_SYSTEM_PROMPT },
     { text: prompt }
@@ -769,7 +831,11 @@ JSON Schema:
 ]
 `;
 
-export async function generateMCQs(sourceText: string, title: string): Promise<any> {
+export async function generateMCQs(
+  sourceText: string,
+  title: string,
+  subject: string = ""
+): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
 
@@ -779,9 +845,61 @@ export async function generateMCQs(sourceText: string, title: string): Promise<a
     generationConfig: { responseMimeType: "application/json", temperature: 0.2 }
   });
 
-  const prompt = `Generate 25-50 high quality MCQs for the chapter "${title}" using this source text:\n\n${sourceText}`;
+  const prompt = `Generate 25-50 high quality MCQs for the chapter "${title}" using this source text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const result = await safeGenerateContent(model, [
     { text: MCQ_SYSTEM_PROMPT },
+    { text: prompt }
+  ]);
+  return JSON.parse(result.response.text().trim());
+}
+
+// -------------------------------------------------------------
+// 9. Active-Recall Flashcard Generation
+// -------------------------------------------------------------
+const FLASHCARD_SYSTEM_PROMPT = `
+You are an expert active-recall study guide tutor.
+Based on the textbook text, generate a comprehensive list of high-quality active-recall study flashcards.
+Each flashcard must contain:
+- "front": a clear question, concept, term, or prompt
+- "back": a concise, clear definition, answer, or explanation (keep it punchy and easy to memorize)
+Do not use markdown inside JSON keys. Output strictly a valid JSON array matching the schema.
+
+JSON Schema:
+[
+  {
+    "front": "What is the primary function of chloroplasts?",
+    "back": "Photosynthesis. They capture light energy to synthesize food/sugars."
+  }
+]
+`;
+
+export async function generateFlashcards(
+  sourceText: string,
+  title: string,
+  count: number = 15,
+  subject: string = ""
+): Promise<any[]> {
+  const apiKey = getGeminiApiKey();
+  if (!apiKey) throw new Error("Gemini API Key missing.");
+
+  const ai = new GoogleGenerativeAI(apiKey);
+  const model = ai.getGenerativeModel({
+    model: "gemini-flash-latest",
+    generationConfig: { responseMimeType: "application/json", temperature: 0.3 }
+  });
+
+  const prompt = `
+  Generate exactly ${count} educational flashcards for the chapter "${title}".
+  Use this textbook source text as the exclusive source:
+
+  [TEXT PASSAGE]
+  ${sourceText}
+
+  ${getSubjectSpecificInstructions(subject)}
+  `;
+
+  const result = await safeGenerateContent(model, [
+    { text: FLASHCARD_SYSTEM_PROMPT },
     { text: prompt }
   ]);
   return JSON.parse(result.response.text().trim());

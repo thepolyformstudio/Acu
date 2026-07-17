@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { DocumentSource, ExamAttempt, dbService, UserProfile } from "@/lib/db";
 import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
+import { getBlueprintForBoard, BOARD_OPTION_GROUPS, BoardBlueprint } from "@/lib/boardBlueprints";
 import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
@@ -129,6 +130,30 @@ export default function AcuExam({
 
   const activeBoard = selectedBoardType === "Custom" ? customBoardText : selectedBoardType;
 
+  // Blueprint state — looked up from the static database
+  const [activeBlueprint, setActiveBlueprint] = useState<BoardBlueprint | null>(getBlueprintForBoard("CBSE"));
+  const [userOverriddenConfig, setUserOverriddenConfig] = useState(false);
+
+  // When the board changes, look up the blueprint and auto-populate defaults
+  useEffect(() => {
+    const bp = getBlueprintForBoard(selectedBoardType);
+    setActiveBlueprint(bp);
+    setUserOverriddenConfig(false);
+    if (bp) {
+      setTotalMarks(bp.totalTheoryMarks);
+      setTotalQuestions(bp.totalQuestions);
+      setDurationMinutes(bp.durationMinutes);
+    }
+  }, [selectedBoardType]);
+
+  // Track if user has manually overridden config values away from blueprint defaults
+  const handleConfigOverride = (setter: (v: number) => void, value: number) => {
+    setter(value);
+    if (activeBlueprint) {
+      setUserOverriddenConfig(true);
+    }
+  };
+
   // Manual chapter override state
   const [manualChapterOverride, setManualChapterOverride] = useState(false);
   const [customChapterName, setCustomChapterName] = useState("");
@@ -144,11 +169,13 @@ export default function AcuExam({
   // Graded Result Scorecard
   const [scorecard, setScorecard] = useState<ExamAttempt | null>(null);
 
-  // Update distribution preview on config change
+  // Update distribution preview on config change (only used in Legacy/Custom mode)
   useEffect(() => {
-    const dist = calculateQuestionDistribution(totalMarks, totalQuestions, activeBoard);
-    setDistribution(dist);
-  }, [totalMarks, totalQuestions, activeBoard]);
+    if (!activeBlueprint) {
+      const dist = calculateQuestionDistribution(totalMarks, totalQuestions, activeBoard);
+      setDistribution(dist);
+    }
+  }, [totalMarks, totalQuestions, activeBoard, activeBlueprint]);
 
   // active Countdown Timer Hook
   useEffect(() => {
@@ -227,7 +254,8 @@ export default function AcuExam({
       }
 
       setLoadingMessage("Creating board blueprint paper questions...");
-      const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks);
+      const docSubject = selectedDoc.subject || "General";
+      const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks, docSubject, activeBlueprint);
       
       // Assign unique local IDs to generated questions for student answering
       let questionIndex = 1;
@@ -319,7 +347,8 @@ export default function AcuExam({
               q.marks,
               q.model_answer,
               q.grading_rubric,
-              studentAns
+              studentAns,
+              activeBlueprint?.gradingStandard || "CBSE Board"
             );
             marksAwarded = Math.max(0, Math.min(q.marks, Number(gradingResult.marks_awarded || 0)));
             justification = gradingResult.justification || "Graded by AI Grader.";
@@ -544,21 +573,13 @@ export default function AcuExam({
                     onChange={(e) => setSelectedBoardType(e.target.value)}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
                   >
-                    <option value="CBSE">CBSE (School)</option>
-                    <option value="ICSE">ICSE (School)</option>
-                    <option value="State Board (Maharashtra)">State Board (MH)</option>
-                    <option value="State Board (Tamil Nadu)">State Board (TN)</option>
-                    <option value="State Board (Karnataka)">State Board (KA)</option>
-                    <option value="JEE Main">JEE Main (Entrance)</option>
-                    <option value="JEE Advanced">JEE Advanced (Entrance)</option>
-                    <option value="NEET">NEET (Medical)</option>
-                    <option value="CAT">CAT (Management)</option>
-                    <option value="CLAT">CLAT (Law)</option>
-                    <option value="UPSC CSE">UPSC Civil Services</option>
-                    <option value="SSC CGL">SSC Government Exam</option>
-                    <option value="Bank PO">Bank PO Exam</option>
-                    <option value="NDA">NDA Entrance</option>
-                    <option value="Custom">Custom / Other</option>
+                    {BOARD_OPTION_GROUPS.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((opt) => (
+                          <option key={opt.value} value={opt.value}>{opt.display}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </div>
 
@@ -608,7 +629,7 @@ export default function AcuExam({
                     type="number"
                     min={1}
                     value={totalQuestions}
-                    onChange={(e) => setTotalQuestions(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => handleConfigOverride(setTotalQuestions, Math.max(1, Number(e.target.value)))}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                   />
                 </div>
@@ -618,7 +639,7 @@ export default function AcuExam({
                     type="number"
                     min={1}
                     value={totalMarks}
-                    onChange={(e) => setTotalMarks(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => handleConfigOverride(setTotalMarks, Math.max(1, Number(e.target.value)))}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                   />
                 </div>
@@ -628,32 +649,70 @@ export default function AcuExam({
                     type="number"
                     min={1}
                     value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(Math.max(1, Number(e.target.value)))}
+                    onChange={(e) => handleConfigOverride(setDurationMinutes, Math.max(1, Number(e.target.value)))}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                   />
                 </div>
               </div>
 
-              {/* Calculated blueprint structure mapping preview */}
-              <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-left">
-                <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                  📊 Auto-Calculated Marking Distribution (Board Standard)
+              {/* Override warning */}
+              {activeBlueprint && userOverriddenConfig && (
+                <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-400 text-xs">
+                  <AlertCircle size={14} />
+                  <span>Custom configuration differs from the official {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} blueprint.</span>
                 </div>
-                <div className="flex flex-wrap gap-4 text-xs">
-                  <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                    Section A: <span className="font-bold text-violet-400">{distribution.mcq}</span> MCQs (1m)
+              )}
+
+              {/* Blueprint Preview Card OR Legacy Distribution Preview */}
+              {activeBlueprint ? (
+                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-left space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                      📋 {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} Blueprint · {activeBlueprint.totalTheoryMarks} marks · {activeBlueprint.totalQuestions} Qs
+                    </div>
+                    <span className="text-[9px] text-slate-600">Verified {activeBlueprint.lastVerified}</span>
                   </div>
-                  <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                    Section B: <span className="font-bold text-violet-400">{distribution.vsa}</span> Very Short Answer (2m)
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {activeBlueprint.sections.map((sec) => (
+                      <div key={sec.sectionLetter} className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                        {sec.sectionLetter}: <span className="font-bold text-violet-400">
+                          {sec.questionTypes.map((qt) => `${qt.count} ${qt.type}`).join(" + ")}
+                        </span> = {sec.totalMarks}m
+                      </div>
+                    ))}
                   </div>
-                  <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                    Section C: <span className="font-bold text-violet-400">{distribution.sa}</span> Short Answer (3m)
-                  </div>
-                  <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                    Section D: <span className="font-bold text-violet-400">{distribution.la}</span> Long Answer (5m)
+                  <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
+                    {activeBlueprint.competencyBasedPercent && (
+                      <span>🎯 {activeBlueprint.competencyBasedPercent}% Competency-Based</span>
+                    )}
+                    {activeBlueprint.negativeMarking && (
+                      <span className="text-red-400">⚠ Negative Marking</span>
+                    )}
+                    <span>⏱ {activeBlueprint.durationMinutes} min</span>
+                    <span>📝 {activeBlueprint.examMode}</span>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-left">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                    📊 Auto-Calculated Marking Distribution (Legacy Mode)
+                  </div>
+                  <div className="flex flex-wrap gap-4 text-xs">
+                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Section A: <span className="font-bold text-violet-400">{distribution.mcq}</span> MCQs (1m)
+                    </div>
+                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Section B: <span className="font-bold text-violet-400">{distribution.vsa}</span> Very Short Answer (2m)
+                    </div>
+                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Section C: <span className="font-bold text-violet-400">{distribution.sa}</span> Short Answer (3m)
+                    </div>
+                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                      Section D: <span className="font-bold text-violet-400">{distribution.la}</span> Long Answer (5m)
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Confirm trigger */}
               <button
@@ -692,7 +751,7 @@ export default function AcuExam({
               <div className="flex items-center justify-between border-b border-slate-900 pb-4 sticky top-[72px] bg-[#0b0c10]/95 backdrop-blur-md py-2 z-20">
                 <div>
               <h3 className="text-lg font-bold text-white">{activeExam.title}</h3>
-              <p className="text-xs text-slate-500">Board Standard Exam Blueprint</p>
+              <p className="text-xs text-slate-500">{activeBlueprint ? `${activeBlueprint.boardAbbreviation} ${activeBlueprint.academicYear} Blueprint` : "Board Standard Exam Blueprint"}</p>
             </div>
             
             <div className="flex items-center gap-2 py-2 px-4 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-400 font-display font-bold">

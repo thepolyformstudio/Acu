@@ -8,7 +8,8 @@ import {
   generateFAQSheet, 
   generateTimeline, 
   generatePodcastScript,
-  generateMCQs
+  generateMCQs,
+  generateFlashcards
 } from "@/lib/gemini";
 import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
 import PptxGenJS from "pptxgenjs";
@@ -121,6 +122,8 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
   const [activeTheme, setActiveTheme] = useState<SlideTheme>(TRANSITION_THEMES[0]);
   const [editMode, setEditMode] = useState(false);
   const [showFlashcards, setShowFlashcards] = useState(false);
+  const [flashcards, setFlashcards] = useState<any[] | null>(null);
+  const [flashcardLoading, setFlashcardLoading] = useState(false);
 
   // Audio Podcast state
   const [podcastPlaying, setPodcastPlaying] = useState(false);
@@ -140,6 +143,8 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     setFaq(null);
     setTimeline(null);
     setPodcast(null);
+    setFlashcards(null);
+    setFlashcardLoading(false);
     setActiveSlideIdx(0);
     window.speechSynthesis.cancel();
     setPodcastPlaying(false);
@@ -177,7 +182,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
         throw new Error("No readable text content in the selected page range.");
       }
 
-      const generated = await generateSlideOutline(textSlices, chap.name);
+      const generated = await generateSlideOutline(textSlices, chap.name, selectedDoc.subject || "General");
       setSlides(generated);
       setActiveSlideIdx(0);
       // Async backup to Google Drive
@@ -226,23 +231,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       }
 
       if (tabType === "notes") {
-        const data = await generateBriefingNotes(textSlices, chap.name);
+        const data = await generateBriefingNotes(textSlices, chap.name, selectedDoc.subject || "General");
         setNotes(data);
         if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "notes", data).catch(() => {});
       } else if (tabType === "faq") {
-        const data = await generateFAQSheet(textSlices, chap.name);
+        const data = await generateFAQSheet(textSlices, chap.name, selectedDoc.subject || "General");
         setFaq(data);
         if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "faq", data).catch(() => {});
       } else if (tabType === "timeline") {
-        const data = await generateTimeline(textSlices, chap.name);
+        const data = await generateTimeline(textSlices, chap.name, selectedDoc.subject || "General");
         setTimeline(data);
         if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "timeline", data).catch(() => {});
       } else if (tabType === "podcast") {
-        const data = await generatePodcastScript(textSlices, chap.name);
+        const data = await generatePodcastScript(textSlices, chap.name, selectedDoc.subject || "General");
         setPodcast(data);
         if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "podcast", data).catch(() => {});
       } else if (tabType === "mcq") {
-        const data = await generateMCQs(textSlices, chap.name);
+        const data = await generateMCQs(textSlices, chap.name, selectedDoc.subject || "General");
         setMcqs(data);
         if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "mcq", data).catch(() => {});
       }
@@ -250,6 +255,80 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       alert("Failed to generate: " + (err.message || String(err)));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Custom Flashcards management
+  const handleOpenFlashcards = async () => {
+    setShowFlashcards(true);
+    if (flashcards) return; // already loaded or generated in this session
+
+    if (!selectedDoc || selectedChapterIdx === -1) return;
+    const chap = selectedDoc.chapterMap?.[selectedChapterIdx];
+    if (!chap) return;
+
+    setFlashcardLoading(true);
+    try {
+      // 1. Try checking drive first
+      if (isDriveSignedIn()) {
+        const existing = await loadNotesFromDrive(selectedDoc.subject || "General", chap.name, "flashcards");
+        if (existing) {
+          setFlashcards(existing);
+          setFlashcardLoading(false);
+          return;
+        }
+      }
+
+      // 2. If not found in drive, generate default of 15 active-recall cards
+      const textSlices = selectedDoc.pages
+        .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
+        .map(p => p.text)
+        .join("\n\n");
+
+      if (textSlices.trim().length === 0) {
+        throw new Error("No readable text content in the selected page range.");
+      }
+
+      const generated = await generateFlashcards(textSlices, chap.name, 15, selectedDoc.subject || "General");
+      setFlashcards(generated);
+      
+      if (isDriveSignedIn()) {
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch(() => {});
+      }
+    } catch (err: any) {
+      alert("Failed to generate flashcards: " + (err.message || String(err)));
+      setShowFlashcards(false);
+    } finally {
+      setFlashcardLoading(false);
+    }
+  };
+
+  const handleGenerateMoreFlashcards = async (count: number) => {
+    if (!selectedDoc || selectedChapterIdx === -1) return;
+    const chap = selectedDoc.chapterMap?.[selectedChapterIdx];
+    if (!chap) return;
+
+    setFlashcardLoading(true);
+    try {
+      const textSlices = selectedDoc.pages
+        .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
+        .map(p => p.text)
+        .join("\n\n");
+
+      if (textSlices.trim().length === 0) {
+        throw new Error("No readable text content in the selected page range.");
+      }
+
+      const generated = await generateFlashcards(textSlices, chap.name, count, selectedDoc.subject || "General");
+      setFlashcards(generated);
+      
+      if (isDriveSignedIn()) {
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch(() => {});
+      }
+    } catch (err: any) {
+      alert("Failed to generate additional flashcards: " + (err.message || String(err)));
+    } finally {
+      setFlashcardLoading(false);
     }
   };
 
@@ -611,8 +690,8 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
             <ListChecks size={14} /> Practice MCQs
           </button>
           <button
-            onClick={() => setShowFlashcards(true)}
-            disabled={slides.length === 0}
+            onClick={handleOpenFlashcards}
+            disabled={!selectedDoc || selectedChapterIdx === -1}
             className="flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-semibold bg-violet-950 text-violet-400 hover:text-white hover:bg-slate-900 border border-violet-500/30 transition-all cursor-pointer disabled:opacity-50"
           >
             <Layers size={14} /> Practice Flashcards
@@ -1107,24 +1186,11 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       {/* 3D Active-Recall Flashcards Overlay */}
       {showFlashcards && (
         <AcuCard
-          cards={slides.map(s => {
-            let back = "";
-            if (s.layout === "title") {
-              back = s.subtitle || "Introductory title slide.";
-            } else if (s.layout === "bullets") {
-              back = (s.bullets || []).join("\n• ");
-            } else if (s.layout === "quote") {
-              back = s.quote + (s.author ? ` — ${s.author}` : "");
-            } else if (s.layout === "comparison") {
-              back = `${s.leftColumn?.header || "Column A"}:\n• ${(s.leftColumn?.items || []).join("\n• ")}\n\n${s.rightColumn?.header || "Column B"}:\n• ${(s.rightColumn?.items || []).join("\n• ")}`;
-            }
-            return {
-              front: s.title || "Concept Definition",
-              back
-            };
-          })}
+          cards={flashcards || []}
           onClose={() => setShowFlashcards(false)}
           chapterName={selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || ""}
+          onGenerateMore={handleGenerateMoreFlashcards}
+          isLoading={flashcardLoading}
         />
       )}
     </div>

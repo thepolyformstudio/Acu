@@ -150,15 +150,35 @@ Both deployed to Firebase Hosting: https://acudex.web.app
 
 ---
 
+## Session 4 — 2026-07-17 (Late Night)
+
+### Changes Made
+
+#### 1. Regeneration of Study Guides (AcuSlide — Roadmap Item 1)
+- Added inline "Regenerate" button next to Slides, Briefing Notes, FAQs, Timelines, MCQs, and Podcast Script.
+- Functions bypass the cache (LocalStorage and Google Drive) to trigger a fresh Gemini prompt, and automatically save the regenerated content to Google Drive.
+
+#### 2. PDF Print Exports (AcuSlide & AcuExam — Roadmap Items 2 & 3)
+- Created print templates using a helper `exportToPDF(title, contentHTML)` that configures styling, breaks page content nicely, and triggers browser print-to-PDF dialogs.
+- Integrated exports for Slides, Briefing Notes, FAQs, MCQs, and Exam Question Papers (including grading rubrics and model keys).
+
+#### 3. Timed Exam Pause, Resume, & Quit Dialog (AcuExam — Roadmap Item 4)
+- Pausing locks questions behind a blurred screen overlay. Timer ticking stops.
+- Session is serialized to localStorage under `acu_paused_exam_session`.
+- Startup banner checks for paused exam states on Screen A, offering to **Resume** or **Discard**.
+- Added a Quit modal prompt offering to **Submit & Grade**, **Pause & Save**, or **Discard & Quit**.
+
+#### 4. Multimodal Handwritten OCR Grading (AcuExam — Roadmap Item 5)
+- Added a file input upload next to written text areas in AcuExam.
+- Converts handwritten sheets to base64, displaying previews and deletion options.
+- Upgraded `gradeWrittenAnswer()` in [`gemini.ts`](file:///e:/Antigravity/SmartGuide/src/lib/gemini.ts) to parse images and run multimodal OCR evaluation with Gemini Flash, transcribing handwriting before checking against rubrics.
+
+### Git & Deploy
+- Verified clean build (`npx tsc --noEmit`).
+- Committed changes to Git.
+
+---
+
 ## Things to Do Later (Roadmap)
 
-1. **Regeneration Option**: Add an option in AcuSlide to regenerate briefing notes, slides, FAQs, timelines, and MCQs once they are generated.
-2. **Export Study Materials**: Add a feature to export slides, briefing notes, FAQs, and MCQs (with answers) into a PDF file and save it to the local device.
-3. **Export Question Paper**: Add a feature to export the generated question paper (and its model answers/grading rubrics) into a local PDF.
-4. **Pause & Resume Exams**: 
-   - Add an option to pause the exam timer and save the current questions and student responses.
-   - Allow resuming the exam later.
-   - Add a "Quit Exam" button that prompts the user to save or discard the attempt.
-5. **Handwritten Upload Grading**: Provide an option to upload an image of handwritten answer sheets inside AcuExam. The app will extract the handwritten text and grade it against model answers/rubrics using Gemini's multimodal capabilities.
-6. **Mobile Applications**: Port the application into a full-fledged Android and iOS app (e.g., using React Native or Capacitor).
-
+1. **Mobile Applications**: Port the application into a full-fledged Android and iOS app (e.g., using React Native or Capacitor).

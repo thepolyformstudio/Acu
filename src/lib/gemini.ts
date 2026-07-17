@@ -621,7 +621,8 @@ export async function gradeWrittenAnswer(
   modelAnswer: string,
   gradingRubric: string,
   studentAnswer: string,
-  gradingStandard: string = "CBSE Board"
+  gradingStandard: string = "CBSE Board",
+  studentAnswerImageBase64?: string
 ): Promise<any> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) throw new Error("Gemini API Key missing.");
@@ -635,7 +636,11 @@ export async function gradeWrittenAnswer(
     }
   });
 
-  const prompt = `
+  const contents: any[] = [
+    { text: buildGraderSystemPrompt(gradingStandard) }
+  ];
+
+  let userPrompt = `
   Evaluate this response:
   
   [QUESTION]
@@ -647,16 +652,43 @@ export async function gradeWrittenAnswer(
   
   [GRADING RUBRIC]
   ${gradingRubric}
-  
-  [STUDENT ANSWER]
-  ${studentAnswer}
   `;
 
-  const result = await safeGenerateContent(model, [
-    { text: buildGraderSystemPrompt(gradingStandard) },
-    { text: prompt }
-  ]);
+  if (studentAnswerImageBase64) {
+    const matches = studentAnswerImageBase64.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.+)$/);
+    if (matches && matches.length === 3) {
+      const mimeType = matches[1];
+      const base64Data = matches[2];
+      
+      userPrompt += `
+      [STUDENT ANSWER IMAGE]
+      We have attached an image of the student's handwritten answer sheet. 
+      Please transcribe the handwriting in the image, analyze it, and grade it against the model answer and grading rubric.
+      Include the transcribed answer text or key extracts inside the justification.
+      `;
+      
+      contents.push({
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      });
+    } else {
+      userPrompt += `
+      [STUDENT ANSWER]
+      ${studentAnswer}
+      `;
+    }
+  } else {
+    userPrompt += `
+    [STUDENT ANSWER]
+    ${studentAnswer}
+    `;
+  }
 
+  contents.push({ text: userPrompt });
+
+  const result = await safeGenerateContent(model, contents);
   return JSON.parse(result.response.text().trim());
 }
 

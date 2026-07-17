@@ -7,7 +7,7 @@ import { getBlueprintForBoard, BOARD_OPTION_GROUPS, BoardBlueprint } from "@/lib
 import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
-  ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2
+  ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2, Download
 } from "lucide-react";
 import { 
   Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer 
@@ -163,11 +163,30 @@ export default function AcuExam({
   // Running Exam State
   const [activeExam, setActiveExam] = useState<any | null>(null);
   const [studentAnswers, setStudentAnswers] = useState<{ [qId: string]: string }>({});
+  const [studentAnswerImages, setStudentAnswerImages] = useState<{ [qId: string]: string }>({});
   const [secondsRemaining, setSecondsRemaining] = useState(0);
   const [examRunning, setExamRunning] = useState(false);
 
+  // Paused / Quit Session states
+  const [pausedSession, setPausedSession] = useState<any | null>(null);
+  const [showQuitPrompt, setShowQuitPrompt] = useState(false);
+
   // Graded Result Scorecard
   const [scorecard, setScorecard] = useState<ExamAttempt | null>(null);
+
+  // Check for paused session on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("acu_paused_exam_session");
+      if (stored) {
+        try {
+          setPausedSession(JSON.parse(stored));
+        } catch (e) {
+          console.error("Failed to parse paused session", e);
+        }
+      }
+    }
+  }, []);
 
   // Update distribution preview on config change (only used in Legacy/Custom mode)
   useEffect(() => {
@@ -348,7 +367,8 @@ export default function AcuExam({
               q.model_answer,
               q.grading_rubric,
               studentAns,
-              activeBlueprint?.gradingStandard || "CBSE Board"
+              activeBlueprint?.gradingStandard || "CBSE Board",
+              studentAnswerImages[q.id]
             );
             marksAwarded = Math.max(0, Math.min(q.marks, Number(gradingResult.marks_awarded || 0)));
             justification = gradingResult.justification || "Graded by AI Grader.";
@@ -404,6 +424,10 @@ export default function AcuExam({
           saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
         }).catch(() => {});
       }
+      localStorage.removeItem("acu_paused_exam_session");
+      setStudentAnswers({});
+      setStudentAnswerImages({});
+      setPausedSession(null);
       setScorecard(attemptResult);
       setActiveExam(null);
       onRefresh();
@@ -438,6 +462,194 @@ export default function AcuExam({
     }
   };
 
+  // Helper to open a beautifully styled print window for PDF download
+  const exportToPDF = (title: string, contentHTML: string) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Please allow popups to export PDFs.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            body {
+              font-family: 'Inter', sans-serif;
+              color: #1e293b;
+              line-height: 1.6;
+              padding: 40px;
+              max-width: 800px;
+              margin: 0 auto;
+              background-color: #ffffff;
+            }
+            h1 {
+              font-size: 22px;
+              border-bottom: 2px solid #e2e8f0;
+              padding-bottom: 10px;
+              color: #0f172a;
+              margin-bottom: 20px;
+              font-weight: 700;
+            }
+            h2 {
+              font-size: 15px;
+              color: #4f46e5;
+              margin-top: 24px;
+              border-bottom: 1px solid #f1f5f9;
+              padding-bottom: 4px;
+              font-weight: 600;
+            }
+            .section {
+              margin-bottom: 24px;
+              page-break-inside: avoid;
+            }
+            .mcq-item {
+              margin-bottom: 16px;
+              page-break-inside: avoid;
+              background: #f8fafc;
+              padding: 16px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            }
+            .mcq-q {
+              font-weight: 600;
+              margin-bottom: 10px;
+              font-size: 13px;
+              color: #0f172a;
+            }
+            .mcq-option {
+              margin-left: 10px;
+              margin-bottom: 6px;
+              font-size: 12px;
+              color: #334155;
+            }
+            .mcq-ans {
+              margin-top: 8px;
+              font-weight: 600;
+              color: #059669;
+              font-size: 12px;
+            }
+            .grading-rubric {
+              font-size: 11px;
+              background: #fffbeb;
+              border: 1px solid #fef3c7;
+              color: #b45309;
+              padding: 8px 12px;
+              margin-top: 8px;
+              border-radius: 6px;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          ${contentHTML}
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleExportExamPDF = () => {
+    if (!activeExam) return;
+    const html = activeExam.sections.map((sec: any) => {
+      const qHTML = sec.questions.map((q: any, idx: number) => {
+        let qContent = `<div class="mcq-q">Q${idx + 1} [${q.marks} Mark(s) - Bloom's: ${q.blooms_level || "Understanding"}]: ${q.question_text}</div>`;
+        if (q.question_type === "MCQ" && q.options) {
+          qContent += (q.options || []).map((o: any) => `
+            <div class="mcq-option">(${o.key}) ${o.text}</div>
+          `).join("");
+        }
+
+        qContent += `
+          <div class="mcq-ans" style="margin-top:8px;">Model Answer / Guideline: <span style="font-weight:normal;color:#334155;">${q.model_answer}</span></div>
+          <div class="grading-rubric">Grading Rubric: ${q.grading_rubric}</div>
+        `;
+        return `<div class="mcq-item">${qContent}</div>`;
+      }).join("");
+
+      return `
+        <div class="section">
+          <h2>Section ${sec.section_letter}: ${sec.section_title || "Questions"}</h2>
+          <p><em>Instructions: ${sec.instructions}</em></p>
+          ${qHTML}
+        </div>
+      `;
+    }).join("");
+
+    exportToPDF(`${activeExam.title} - Question Paper & Answer Key`, html);
+  };
+
+  const handlePauseToggle = () => {
+    const nextState = !examRunning;
+    setExamRunning(nextState);
+
+    if (!nextState && activeExam) {
+      // Pause: Save state to localStorage
+      const session = {
+        activeExam,
+        studentAnswers,
+        studentAnswerImages,
+        secondsRemaining,
+        selectedSubject,
+        selectedChapterKey,
+        examTitle,
+        classGrade,
+        totalQuestions,
+        totalMarks,
+        durationMinutes,
+        selectedBoardType,
+        customBoardText
+      };
+      localStorage.setItem("acu_paused_exam_session", JSON.stringify(session));
+    } else {
+      // Resume: Clear active paused storage
+      localStorage.removeItem("acu_paused_exam_session");
+    }
+  };
+
+  const handleResumePausedExam = () => {
+    if (!pausedSession) return;
+
+    setExamTitle(pausedSession.examTitle);
+    setSelectedSubject(pausedSession.selectedSubject);
+    setSelectedChapterKey(pausedSession.selectedChapterKey);
+    setClassGrade(pausedSession.classGrade);
+    setTotalQuestions(pausedSession.totalQuestions);
+    setTotalMarks(pausedSession.totalMarks);
+    setDurationMinutes(pausedSession.durationMinutes);
+    setSelectedBoardType(pausedSession.selectedBoardType);
+    setCustomBoardText(pausedSession.customBoardText);
+
+    setActiveExam(pausedSession.activeExam);
+    setStudentAnswers(pausedSession.studentAnswers);
+    setSecondsRemaining(pausedSession.secondsRemaining);
+    if (pausedSession.studentAnswerImages) {
+      setStudentAnswerImages(pausedSession.studentAnswerImages);
+    }
+
+    setExamRunning(true);
+    setPausedSession(null);
+  };
+
+  const handleDiscardPausedExam = () => {
+    if (confirm("Are you sure you want to discard this paused exam session? All progress will be lost.")) {
+      localStorage.removeItem("acu_paused_exam_session");
+      setPausedSession(null);
+    }
+  };
+
   const formatTimer = (secs: number) => {
     const m = Math.floor(secs / 60);
     const s = secs % 60;
@@ -456,6 +668,31 @@ export default function AcuExam({
 
   return (
     <div className="space-y-6">
+      {/* Paused Session Prompt Banner */}
+      {pausedSession && !activeExam && !scorecard && (
+        <div className="glass-panel p-4 rounded-xl border border-amber-500/20 bg-amber-950/10 text-left flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+          <div>
+            <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider">Paused Exam Session Detected</h4>
+            <p className="text-sm font-semibold text-white mt-1">"{pausedSession.examTitle}" — {pausedSession.selectedSubject}</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">{pausedSession.totalQuestions} questions · {pausedSession.totalMarks} marks · {Math.ceil(pausedSession.secondsRemaining / 60)} minutes left</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleResumePausedExam}
+              className="py-1.5 px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer shadow-md shadow-amber-600/10"
+            >
+              Resume Exam
+            </button>
+            <button
+              onClick={handleDiscardPausedExam}
+              className="py-1.5 px-3 border border-slate-800 hover:border-red-900/40 text-slate-400 hover:text-red-400 rounded-lg text-xs transition-colors cursor-pointer"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* -------------------------------------------------------------
           SCREEN A: EXAM CONFIGURATOR (INITIAL DESIGN SCREEN)
          ------------------------------------------------------------- */}
@@ -754,14 +991,51 @@ export default function AcuExam({
               <p className="text-xs text-slate-500">{activeBlueprint ? `${activeBlueprint.boardAbbreviation} ${activeBlueprint.academicYear} Blueprint` : "Board Standard Exam Blueprint"}</p>
             </div>
             
-            <div className="flex items-center gap-2 py-2 px-4 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-400 font-display font-bold">
-              <Timer size={18} />
-              <span>{formatTimer(secondsRemaining)}</span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleExportExamPDF}
+                className="py-2 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+              >
+                <Download size={14} /> Export PDF
+              </button>
+              <button
+                onClick={handlePauseToggle}
+                className="py-2 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                {examRunning ? "Pause Exam" : "Resume Exam"}
+              </button>
+              <button
+                onClick={() => setShowQuitPrompt(true)}
+                className="py-2 px-3 bg-red-950/20 border border-red-900/35 text-red-400 hover:bg-red-900 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Quit Exam
+              </button>
+              <div className="flex items-center gap-2 py-2 px-4 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-400 font-display font-bold">
+                <Timer size={18} />
+                <span>{formatTimer(secondsRemaining)}</span>
+              </div>
             </div>
           </div>
 
           {/* Exam Questions Form */}
-          <div className="space-y-8">
+          <div className="relative">
+            {!examRunning && (
+              <div className="absolute inset-0 z-30 bg-[#0b0c10]/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-2xl border border-slate-850">
+                <AlertCircle className="text-amber-400 mb-2" size={32} />
+                <h4 className="text-lg font-bold text-white mb-1">Exam is Paused</h4>
+                <p className="text-xs text-slate-500 mb-4 max-w-xs text-center leading-relaxed">
+                  Questions are hidden to maintain test integrity. Click Resume to continue.
+                </p>
+                <button
+                  onClick={handlePauseToggle}
+                  className="px-6 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold tracking-wide transition-all cursor-pointer shadow-lg shadow-violet-600/20"
+                >
+                  Resume Exam
+                </button>
+              </div>
+            )}
+            
+            <div className={`space-y-8 ${!examRunning ? 'opacity-10 filter blur-sm pointer-events-none' : ''}`}>
             {activeExam.sections.map((sec: any) => {
               if (sec.questions.length === 0) return null;
               return (
@@ -813,13 +1087,75 @@ export default function AcuExam({
                             ))}
                           </div>
                         ) : (
-                          <textarea
-                            value={studentAnswers[q.id] || ""}
-                            onChange={(e) => setStudentAnswers({ ...studentAnswers, [q.id]: e.target.value })}
-                            placeholder="Write your answer here..."
-                            rows={q.marks > 3 ? 5 : 3}
-                            className="w-full bg-slate-950/40 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-700 outline-none resize-none"
-                          />
+                          <div className="space-y-3">
+                            <textarea
+                              value={studentAnswers[q.id] || ""}
+                              onChange={(e) => setStudentAnswers({ ...studentAnswers, [q.id]: e.target.value })}
+                              placeholder="Write your answer here..."
+                              rows={q.marks > 3 ? 5 : 3}
+                              className="w-full bg-slate-950/40 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-700 outline-none resize-none"
+                              disabled={!!studentAnswerImages[q.id]}
+                            />
+                            
+                            <div className="flex items-center gap-2 pt-1">
+                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Or</span>
+                              <div className="relative">
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  id={`handwritten-file-upload-${q.id}`}
+                                  onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) {
+                                      const reader = new FileReader();
+                                      reader.onloadend = () => {
+                                        setStudentAnswerImages({
+                                          ...studentAnswerImages,
+                                          [q.id]: reader.result as string
+                                        });
+                                      };
+                                      reader.readAsDataURL(file);
+                                    }
+                                  }}
+                                  className="hidden"
+                                />
+                                <label
+                                  htmlFor={`handwritten-file-upload-${q.id}`}
+                                  className="flex items-center gap-1.5 py-1 px-3 border border-violet-500/25 bg-violet-950/20 hover:bg-violet-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
+                                >
+                                  📷 Upload Handwritten Answer Sheet
+                                </label>
+                              </div>
+                              
+                              {studentAnswerImages[q.id] && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1">
+                                    <Check size={11} /> Image Attached
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      const newImages = { ...studentAnswerImages };
+                                      delete newImages[q.id];
+                                      setStudentAnswerImages(newImages);
+                                    }}
+                                    className="text-[9px] text-rose-450 hover:text-rose-350 font-semibold underline cursor-pointer"
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {studentAnswerImages[q.id] && (
+                              <div className="relative w-full max-w-[200px] aspect-[4/3] rounded-lg overflow-hidden border border-slate-800 mt-2 bg-slate-950/45">
+                                <img
+                                  src={studentAnswerImages[q.id]}
+                                  alt="Attached answer sheet preview"
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     ))}
@@ -827,6 +1163,7 @@ export default function AcuExam({
                 </div>
               );
             })}
+          </div>
           </div>
 
           {/* Submit Actions */}
@@ -840,6 +1177,82 @@ export default function AcuExam({
           </div>
             </>
           )}
+        </div>
+      )}
+      {/* Quit Exam Session Prompt Modal */}
+      {showQuitPrompt && (
+        <div className="fixed inset-0 z-50 bg-[#0b0c10]/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-panel p-6 rounded-2xl max-w-sm w-full text-center space-y-4 border border-slate-800 animate-fade-in">
+            <AlertCircle size={32} className="text-red-400 mx-auto" />
+            <div>
+              <h4 className="text-base font-bold text-white">Quit Active Exam</h4>
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                What would you like to do with this exam attempt?
+              </p>
+            </div>
+            
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                onClick={() => {
+                  setShowQuitPrompt(false);
+                  handleExamSubmit();
+                }}
+                className="w-full py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Submit & Grade Current Answers
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowQuitPrompt(false);
+                  setExamRunning(false);
+                  const session = {
+                    activeExam,
+                    studentAnswers,
+                    studentAnswerImages,
+                    secondsRemaining,
+                    selectedSubject,
+                    selectedChapterKey,
+                    examTitle,
+                    classGrade,
+                    totalQuestions,
+                    totalMarks,
+                    durationMinutes,
+                    selectedBoardType,
+                    customBoardText
+                  };
+                  localStorage.setItem("acu_paused_exam_session", JSON.stringify(session));
+                  setPausedSession(session);
+                  setActiveExam(null); // return to Screen A
+                }}
+                className="w-full py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-350 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Pause & Save for Later
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (confirm("Are you sure you want to discard this exam? All answers and progress will be permanently lost.")) {
+                    setShowQuitPrompt(false);
+                    setExamRunning(false);
+                    localStorage.removeItem("acu_paused_exam_session");
+                    setPausedSession(null);
+                    setActiveExam(null); // return to Screen A
+                  }
+                }}
+                className="w-full py-2 bg-red-950/20 border border-red-900/30 hover:bg-red-900 hover:text-white text-red-400 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Discard & Quit
+              </button>
+              
+              <button
+                onClick={() => setShowQuitPrompt(false)}
+                className="w-full py-2 border border-slate-900 hover:border-slate-800 text-slate-500 hover:text-slate-400 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

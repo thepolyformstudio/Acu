@@ -417,6 +417,318 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
     speakLine();
   };
 
+  // Helper to open a beautifully styled print window for PDF download
+  const exportToPDF = (title: string, contentHTML: string) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Please allow popups to export PDFs.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+            body {
+              font-family: 'Inter', sans-serif;
+              color: #1e293b;
+              line-height: 1.6;
+              padding: 40px;
+              max-width: 800px;
+              margin: 0 auto;
+              background-color: #ffffff;
+            }
+            h1 {
+              font-size: 22px;
+              border-bottom: 2px solid #e2e8f0;
+              padding-bottom: 10px;
+              color: #0f172a;
+              margin-bottom: 20px;
+              font-weight: 700;
+            }
+            h2 {
+              font-size: 16px;
+              color: #4f46e5;
+              margin-top: 24px;
+              border-bottom: 1px solid #f1f5f9;
+              padding-bottom: 4px;
+              font-weight: 600;
+            }
+            .section {
+              margin-bottom: 24px;
+              page-break-inside: avoid;
+            }
+            .bullets {
+              padding-left: 20px;
+              margin-top: 6px;
+            }
+            .bullet-item {
+              margin-bottom: 6px;
+              color: #334155;
+              font-size: 13px;
+            }
+            .comparison-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              gap: 16px;
+              margin-top: 12px;
+            }
+            .column {
+              background: #f8fafc;
+              padding: 12px;
+              border-radius: 6px;
+              border: 1px solid #e2e8f0;
+            }
+            .quote-box {
+              background: #f5f3ff;
+              border-left: 4px solid #8b5cf6;
+              padding: 12px 16px;
+              font-style: italic;
+              margin: 16px 0;
+              border-radius: 0 6px 6px 0;
+              color: #5b21b6;
+              font-size: 13px;
+            }
+            .faq-item {
+              margin-bottom: 16px;
+              page-break-inside: avoid;
+              background: #fafafa;
+              padding: 12px 16px;
+              border-radius: 8px;
+              border: 1px solid #f0f0f0;
+            }
+            .faq-q {
+              font-weight: 600;
+              color: #4338ca;
+              font-size: 13px;
+            }
+            .faq-a {
+              margin-top: 4px;
+              color: #334155;
+              font-size: 13px;
+            }
+            .mcq-item {
+              margin-bottom: 16px;
+              page-break-inside: avoid;
+              background: #f8fafc;
+              padding: 16px;
+              border-radius: 8px;
+              border: 1px solid #e2e8f0;
+            }
+            .mcq-q {
+              font-weight: 600;
+              margin-bottom: 10px;
+              font-size: 13px;
+              color: #0f172a;
+            }
+            .mcq-option {
+              margin-left: 10px;
+              margin-bottom: 6px;
+              font-size: 12px;
+              color: #334155;
+            }
+            .mcq-ans {
+              margin-top: 8px;
+              font-weight: 600;
+              color: #059669;
+              font-size: 12px;
+            }
+            .mcq-exp {
+              font-size: 11px;
+              color: #64748b;
+              margin-top: 2px;
+              font-style: italic;
+            }
+            .glossary-item {
+              margin-bottom: 12px;
+              font-size: 13px;
+            }
+            @media print {
+              body {
+                padding: 0;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          ${contentHTML}
+          <script>
+            window.onload = function() {
+              window.print();
+            }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleExportSlidesPDF = () => {
+    if (slides.length === 0) return;
+    const html = slides.map((s, idx) => {
+      let content = "";
+      if (s.layout === "title") {
+        content = `<h3 style="color:#64748b; font-weight:normal; font-size:14px;">${s.subtitle || ""}</h3>`;
+      } else if (s.layout === "bullets") {
+        content = `<ul class="bullets">${(s.bullets || []).map((b: string) => `<li class="bullet-item">${b}</li>`).join("")}</ul>`;
+      } else if (s.layout === "quote") {
+        content = `<div class="quote-box">"${s.quote}"${s.author ? ` — <strong>${s.author}</strong>` : ""}</div>`;
+      } else if (s.layout === "comparison") {
+        content = `
+          <div class="comparison-grid">
+            <div class="column">
+              <strong style="font-size:12px; text-transform:uppercase; color:#64748b;">${s.leftColumn?.header || ""}</strong>
+              <ul class="bullets">${(s.leftColumn?.items || []).map((b: string) => `<li class="bullet-item">${b}</li>`).join("")}</ul>
+            </div>
+            <div class="column">
+              <strong style="font-size:12px; text-transform:uppercase; color:#64748b;">${s.rightColumn?.header || ""}</strong>
+              <ul class="bullets">${(s.rightColumn?.items || []).map((b: string) => `<li class="bullet-item">${b}</li>`).join("")}</ul>
+            </div>
+          </div>
+        `;
+      }
+      return `
+        <div class="section">
+          <h2>Slide ${idx + 1}: ${s.title || "Untitled Slide"}</h2>
+          ${content}
+        </div>
+      `;
+    }).join("");
+
+    const chapterName = selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || "Study Guide";
+    exportToPDF(`${chapterName} - Slide Presentation Outline`, html);
+  };
+
+  const handleExportNotesPDF = () => {
+    if (!notes) return;
+    const chHTML = (notes.chapters || []).map((ch: any, idx: number) => `
+      <div class="section">
+        <h2>Chapter ${idx + 1}: ${ch.title}</h2>
+        <p style="font-size:13px; color:#334155; text-align:justify;">${ch.content}</p>
+        <strong style="font-size:12px; color:#4f46e5;">Key Educational Takeaways:</strong>
+        <ul class="bullets">
+          ${(ch.takeaways || []).map((t: string) => `<li class="bullet-item">${t}</li>`).join("")}
+        </ul>
+      </div>
+    `).join("");
+
+    const glossHTML = notes.glossary && notes.glossary.length > 0 ? `
+      <div class="section" style="page-break-before:always;">
+        <h2>Glossary & Key Concepts</h2>
+        <dl>
+          ${notes.glossary.map((g: any) => `
+            <div class="glossary-item">
+              <dt><strong>${g.term}</strong></dt>
+              <dd style="margin-left:0; color:#475569; margin-top:2px;">${g.definition}</dd>
+            </div>
+          `).join("")}
+        </dl>
+      </div>
+    ` : "";
+
+    const chapterName = selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || "Study Guide";
+    exportToPDF(`${chapterName} - Detailed Briefing Notes`, chHTML + glossHTML);
+  };
+
+  const handleExportFaqPDF = () => {
+    if (!faq || !faq.faqs) return;
+    const html = faq.faqs.map((f: any, idx: number) => `
+      <div class="faq-item">
+        <div class="faq-q">Q${idx + 1}: ${f.question}</div>
+        <div class="faq-a">Answer: ${f.answer}</div>
+      </div>
+    `).join("");
+
+    const chapterName = selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || "Study Guide";
+    exportToPDF(`${chapterName} - Frequently Asked Questions`, html);
+  };
+
+  const handleExportMcqPDF = () => {
+    if (!mcqs) return;
+    const html = mcqs.map((m: any, idx: number) => `
+      <div class="mcq-item">
+        <div class="mcq-q">${idx + 1}. ${m.question}</div>
+        ${(m.options || []).map((opt: string, oIdx: number) => `
+          <div class="mcq-option">(${String.fromCharCode(65 + oIdx)}) ${opt}</div>
+        `).join("")}
+        <div class="mcq-ans">Correct Answer: ${m.correctAnswer}</div>
+        <div class="mcq-exp">Explanation: ${m.explanation}</div>
+      </div>
+    `).join("");
+
+    const chapterName = selectedDoc?.chapterMap?.[selectedChapterIdx]?.name || "Study Guide";
+    exportToPDF(`${chapterName} - Practice MCQs`, html);
+  };
+
+  // Force-regenerate artifact by bypassing local state and drive cache
+  const handleRegenerateArtifact = async (tabType: "notes" | "faq" | "timeline" | "podcast" | "mcq" | "slides") => {
+    if (!selectedDoc || selectedChapterIdx === -1) return;
+    const chap = selectedDoc.chapterMap?.[selectedChapterIdx];
+    if (!chap) return;
+
+    setLoading(true);
+    setLoadingMessage(`Gemini is regenerating your ${tabType === "notes" ? "study notes" : tabType === "faq" ? "FAQs" : tabType === "timeline" ? "timeline phases" : tabType === "mcq" ? "MCQs" : tabType === "slides" ? "slides" : "podcast audio script"}...`);
+
+    try {
+      const textSlices = selectedDoc.pages
+        .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
+        .map(p => p.text)
+        .join("\n\n");
+
+      if (textSlices.trim().length === 0) {
+        throw new Error("No readable text content in the selected page range.");
+      }
+
+      const docSubject = selectedDoc.subject || "General";
+
+      if (tabType === "slides") {
+        const generated = await generateSlideOutline(textSlices, chap.name, docSubject);
+        setSlides(generated);
+        setActiveSlideIdx(0);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "slides", generated).catch(() => {});
+        }
+      } else if (tabType === "notes") {
+        const data = await generateBriefingNotes(textSlices, chap.name, docSubject);
+        setNotes(data);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "notes", data).catch(() => {});
+        }
+      } else if (tabType === "faq") {
+        const data = await generateFAQSheet(textSlices, chap.name, docSubject);
+        setFaq(data);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "faq", data).catch(() => {});
+        }
+      } else if (tabType === "timeline") {
+        const data = await generateTimeline(textSlices, chap.name, docSubject);
+        setTimeline(data);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "timeline", data).catch(() => {});
+        }
+      } else if (tabType === "podcast") {
+        const data = await generatePodcastScript(textSlices, chap.name, docSubject);
+        setPodcast(data);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "podcast", data).catch(() => {});
+        }
+      } else if (tabType === "mcq") {
+        const data = await generateMCQs(textSlices, chap.name, docSubject);
+        setMcqs(data);
+        if (isDriveSignedIn()) {
+          saveNotesToDrive(docSubject, chap.name, "mcq", data).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      alert("Failed to regenerate: " + (err.message || String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // PowerPoint download compiler
   const handleDownloadPPTX = () => {
     if (slides.length === 0) return;
@@ -854,10 +1166,24 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
                     </button>
 
                     <button
+                      onClick={handleExportSlidesPDF}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-indigo-650 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-md"
+                    >
+                      <Download size={14} /> Export PDF
+                    </button>
+
+                    <button
                       onClick={handleDownloadPPTX}
                       className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer shadow-md"
                     >
                       <Download size={14} /> Export PowerPoint
+                    </button>
+
+                    <button
+                      onClick={() => handleRegenerateArtifact("slides")}
+                      className="flex items-center gap-1.5 px-4 py-2 bg-violet-950 border border-violet-900/40 text-violet-400 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                    >
+                      <RefreshCw size={14} /> Regenerate
                     </button>
                   </div>
                 </div>
@@ -934,9 +1260,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
           {activeStudyTab === "notes" && notes && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start text-left animate-fade-in">
               <div className="lg:col-span-8 glass-panel p-6 rounded-2xl space-y-6">
-                <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <h3 className="font-display font-extrabold text-white text-lg">{notes.title || "Study Briefing Guide"}</h3>
-                  <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Syllabus Summary</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleExportNotesPDF}
+                      className="py-1 px-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Download size={10} /> Export PDF
+                    </button>
+                    <button
+                      onClick={() => handleRegenerateArtifact("notes")}
+                      className="py-1 px-3 bg-violet-950 border border-violet-900/40 hover:bg-slate-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <RefreshCw size={10} /> Regenerate
+                    </button>
+                    <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Syllabus Summary</span>
+                  </div>
                 </div>
                 
                 <div className="space-y-6">
@@ -989,9 +1329,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
           {/* TAB 3: FAQ SHEET */}
           {activeStudyTab === "faq" && faq && (
             <div className="glass-panel p-6 rounded-2xl text-left space-y-6 max-w-4xl mx-auto animate-fade-in">
-              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <h3 className="font-display font-extrabold text-white text-lg">Frequently Asked Questions (FAQ)</h3>
-                <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Concept Clues</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportFaqPDF}
+                    className="py-1 px-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Download size={10} /> Export PDF
+                  </button>
+                  <button
+                    onClick={() => handleRegenerateArtifact("faq")}
+                    className="py-1 px-3 bg-violet-950 border border-violet-900/40 hover:bg-slate-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw size={10} /> Regenerate
+                  </button>
+                  <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Concept Clues</span>
+                </div>
               </div>
 
               {faq.faqs && faq.faqs.length > 0 ? (
@@ -1017,9 +1371,17 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
           {/* TAB 4: CHRONOLOGICAL TIMELINE */}
           {activeStudyTab === "timeline" && timeline && (
             <div className="glass-panel p-6 rounded-2xl text-left space-y-6 max-w-3xl mx-auto animate-fade-in">
-              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <h3 className="font-display font-extrabold text-white text-lg">Chronological Timeline & Process steps</h3>
-                <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Workflow Mapping</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleRegenerateArtifact("timeline")}
+                    className="py-1 px-3 bg-violet-950 border border-violet-900/40 hover:bg-slate-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw size={10} /> Regenerate
+                  </button>
+                  <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Workflow Mapping</span>
+                </div>
               </div>
 
               {timeline.timeline && timeline.timeline.length > 0 ? (
@@ -1050,9 +1412,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
           {/* TAB 5: MCQ */}
           {activeStudyTab === "mcq" && mcqs && (
             <div className="glass-panel p-6 rounded-2xl text-left space-y-6 max-w-4xl mx-auto animate-fade-in">
-              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <div className="border-b border-slate-800 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <h3 className="font-display font-extrabold text-white text-lg">Practice MCQs</h3>
-                <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Self Assessment</span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportMcqPDF}
+                    className="py-1 px-3 bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Download size={10} /> Export PDF
+                  </button>
+                  <button
+                    onClick={() => handleRegenerateArtifact("mcq")}
+                    className="py-1 px-3 bg-violet-950 border border-violet-900/40 hover:bg-slate-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw size={10} /> Regenerate
+                  </button>
+                  <span className="text-[10px] font-semibold text-violet-400 bg-violet-950/40 px-2.5 py-1 rounded border border-violet-500/20 uppercase tracking-wider">Self Assessment</span>
+                </div>
               </div>
               <div className="space-y-4">
                 {mcqs.map((mcq: any, idx: number) => (
@@ -1159,6 +1535,13 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
                       ) : (
                         <><Play size={18} /> Play Podcast</>
                       )}
+                    </button>
+
+                    <button 
+                      onClick={() => handleRegenerateArtifact("podcast")}
+                      className="w-full py-2.5 bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5 cursor-pointer mt-2"
+                    >
+                      <RefreshCw size={14} /> Regenerate Script
                     </button>
                     
                     <div className="text-[10px] text-slate-500 max-w-xs leading-relaxed">

@@ -121,3 +121,44 @@ Both deployed to Firebase Hosting: https://acudex.web.app
 ### Git Status
 - All changes committed and pushed to `master` on `github.com/thepolyformstudio/Acu`
 - Latest commit: `882aabb`
+
+---
+
+## Session 3 — 2026-07-17 (Evening)
+
+### Changes Made
+
+#### 1. Board Blueprint Database & Custom Exam Generation (AcuExam)
+- Created a structured blueprint registry ([`boardBlueprints.ts`](file:///e:/Antigravity/SmartGuide/src/lib/boardBlueprints.ts)) with pattern data for 31 boards.
+- Expanded the dropdown to group national/state/entrance/government boards in `<optgroup>`.
+- Added auto-population of defaults (marks, questions, duration) on board change, a warning badge for deviations from the official blueprint, and a dynamic board-specific grading standard.
+- Preserved legacy mode as the "Custom / Legacy" selection.
+
+#### 2. Subject-Aware Study Material Generation (AcuSlide)
+- Passed the document's subject through to all study guide generators.
+- Injected subject rules into all prompts (e.g. Mathematics forces sums/derivations, Languages focus on grammar/literature, Geography maps timeline, etc.).
+
+#### 3. AI Flashcard Deck Generator & 3D Flip Fixes (AcuCard)
+- Decoupled flashcard practice from slides so cards can be generated whenever a chapter is selected.
+- Enabled custom deck sizes (10, 15, 25, 40 Cards) with an AI generator that backs up to/loads from Google Drive (type `"flashcards"`).
+- Resolved flip transition issues by creating 3D helper classes in [`globals.css`](file:///e:/Antigravity/SmartGuide/src/app/globals.css) and removing conflicting CSS transition styles from the Framer Motion elements.
+- Integrated a loading spinner overlay for active generations.
+
+### Git & Deploy
+- Committed and pushed to `master` ([8e68586](https://github.com/thepolyformstudio/Acu/commit/8e68586)).
+- Deployed successfully to Firebase Hosting URL: https://acudex.web.app.
+
+---
+
+## Things to Do Later (Roadmap)
+
+1. **Regeneration Option**: Add an option in AcuSlide to regenerate briefing notes, slides, FAQs, timelines, and MCQs once they are generated.
+2. **Export Study Materials**: Add a feature to export slides, briefing notes, FAQs, and MCQs (with answers) into a PDF file and save it to the local device.
+3. **Export Question Paper**: Add a feature to export the generated question paper (and its model answers/grading rubrics) into a local PDF.
+4. **Pause & Resume Exams**: 
+   - Add an option to pause the exam timer and save the current questions and student responses.
+   - Allow resuming the exam later.
+   - Add a "Quit Exam" button that prompts the user to save or discard the attempt.
+5. **Handwritten Upload Grading**: Provide an option to upload an image of handwritten answer sheets inside AcuExam. The app will extract the handwritten text and grade it against model answers/rubrics using Gemini's multimodal capabilities.
+6. **Mobile Applications**: Port the application into a full-fledged Android and iOS app (e.g., using React Native or Capacitor).
+

@@ -551,6 +551,16 @@ export const dbService = {
   },
 
   async getAllAppReviews(): Promise<AppReview[]> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = query(collection(firestore, "reviews"));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as AppReview);
+      } catch (e) {
+        console.error("Firestore getAllAppReviews failed:", e);
+        return [];
+      }
+    }
     return getMockData(LOCAL_MOCK_REVIEWS, []);
   },
 
@@ -558,11 +568,29 @@ export const dbService = {
   // Admin Methods
   // -------------------------------------------------------------
   async getAllProfiles(): Promise<UserProfile[]> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = query(collection(firestore, "profiles"));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => d.data() as UserProfile);
+      } catch (e) {
+        console.error("Firestore getAllProfiles failed:", e);
+        return [];
+      }
+    }
     const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
     return Object.values(profiles);
   },
 
   async deleteProfile(profileId: string): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        await setDoc(doc(firestore, "profiles", profileId), { deleted: true }, { merge: true });
+      } catch (e) {
+        console.error("Firestore deleteProfile failed:", e);
+      }
+      return;
+    }
     const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
     if (profiles[profileId]) {
       delete profiles[profileId];
@@ -571,12 +599,39 @@ export const dbService = {
   },
 
   async deleteAppReview(reviewId: string): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        await setDoc(doc(firestore, "reviews", reviewId), { deleted: true }, { merge: true });
+      } catch (e) {
+        console.error("Firestore deleteAppReview failed:", e);
+      }
+      return;
+    }
     const reviews: AppReview[] = getMockData(LOCAL_MOCK_REVIEWS, []);
     const filtered = reviews.filter((r) => r.id !== reviewId);
     saveMockData(LOCAL_MOCK_REVIEWS, filtered);
   },
 
   async getSystemAnalytics(): Promise<{ totalUsers: number, totalDocuments: number, totalAttempts: number }> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const usersSnap = await getCountFromServer(collection(firestore, "profiles"));
+        const totalUsers = usersSnap.data().count;
+        const docsSnap = await getCountFromServer(collection(firestore, "documents"));
+        const totalDocuments = docsSnap.data().count;
+        let totalAttempts = 0;
+        const profilesSnap = await getDocs(collection(firestore, "profiles"));
+        for (const pDoc of profilesSnap.docs) {
+          try {
+            const attemptsSnap = await getCountFromServer(collection(firestore, "profiles", pDoc.id, "attempts"));
+            totalAttempts += attemptsSnap.data().count;
+          } catch { }
+        }
+        return { totalUsers, totalDocuments, totalAttempts };
+      } catch (e) {
+        console.error("Firestore getSystemAnalytics failed:", e);
+      }
+    }
     const profiles = Object.values(getMockData(LOCAL_MOCK_PROFILES, {}));
     const documents = getMockData(LOCAL_MOCK_DOCUMENTS, []);
     

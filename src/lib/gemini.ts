@@ -1,6 +1,13 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { BoardBlueprint, getSubjectSpecificInstructions } from "@/lib/boardBlueprints";
 
+export const MOCK_API_KEY = "AIzaSyMockKeyForTutorial";
+
+const RATE_LIMIT_CONFIG = {
+  maxRequestsPerMinute: Number(process.env.NEXT_PUBLIC_GEMINI_RATE_PER_MINUTE) || 5,
+  maxRequestsPerDay: Number(process.env.NEXT_PUBLIC_GEMINI_RATE_PER_DAY) || 20,
+};
+
 // Retrieves the user's Gemini key securely from local storage
 export function getGeminiApiKey(): string {
   if (typeof window !== "undefined") {
@@ -59,8 +66,8 @@ function checkAndRecordRateLimit() {
 
   timestamps = timestamps.filter(t => now - t < 60000);
 
-  if (timestamps.length >= 5) {
-    throw new Error("You are generating too fast! Please wait a minute before trying again.");
+  if (timestamps.length >= RATE_LIMIT_CONFIG.maxRequestsPerMinute) {
+    throw new Error(`You are generating too fast! Please wait a minute before trying again. (Limit: ${RATE_LIMIT_CONFIG.maxRequestsPerMinute}/min)`);
   }
 
   let dailyUsage = getDailyUsage();
@@ -68,8 +75,8 @@ function checkAndRecordRateLimit() {
     dailyUsage = { date: today, count: 0 };
   }
 
-  if (dailyUsage.count >= 20) {
-    throw new Error(`You have reached your daily limit of 20 requests. The quota will reset ${getLocalResetTime()}. Come back then or upgrade your API tier!`);
+  if (dailyUsage.count >= RATE_LIMIT_CONFIG.maxRequestsPerDay) {
+    throw new Error(`You have reached your daily limit of ${RATE_LIMIT_CONFIG.maxRequestsPerDay} requests. The quota will reset ${getLocalResetTime()}. Come back then or upgrade your API tier!`);
   }
 
   timestamps.push(now);
@@ -81,7 +88,7 @@ function checkAndRecordRateLimit() {
 
 async function safeGenerateContent(model: any, request: any) {
   const apiKey = getGeminiApiKey();
-  if (apiKey === "AIzaSyMockKeyForTutorial") {
+  if (apiKey === MOCK_API_KEY) {
     let requestText = "";
     if (typeof request === "string") {
       requestText = request;

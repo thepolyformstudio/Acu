@@ -187,7 +187,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       setActiveSlideIdx(0);
       // Async backup to Google Drive
       if (isDriveSignedIn()) {
-        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "slides", generated).catch(() => {});
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "slides", generated).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
     } catch (err: any) {
       alert("Generation failed: " + (err.message || String(err)));
@@ -233,23 +233,23 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       if (tabType === "notes") {
         const data = await generateBriefingNotes(textSlices, chap.name, selectedDoc.subject || "General");
         setNotes(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "notes", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "notes", data).catch((err) => console.error("[Acu] Drive sync error:", err));
       } else if (tabType === "faq") {
         const data = await generateFAQSheet(textSlices, chap.name, selectedDoc.subject || "General");
         setFaq(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "faq", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "faq", data).catch((err) => console.error("[Acu] Drive sync error:", err));
       } else if (tabType === "timeline") {
         const data = await generateTimeline(textSlices, chap.name, selectedDoc.subject || "General");
         setTimeline(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "timeline", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "timeline", data).catch((err) => console.error("[Acu] Drive sync error:", err));
       } else if (tabType === "podcast") {
         const data = await generatePodcastScript(textSlices, chap.name, selectedDoc.subject || "General");
         setPodcast(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "podcast", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "podcast", data).catch((err) => console.error("[Acu] Drive sync error:", err));
       } else if (tabType === "mcq") {
         const data = await generateMCQs(textSlices, chap.name, selectedDoc.subject || "General");
         setMcqs(data);
-        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "mcq", data).catch(() => {});
+        if (isDriveSignedIn()) saveNotesToDrive(selectedDoc.subject || "General", chap.name, "mcq", data).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
     } catch (err: any) {
       alert("Failed to generate: " + (err.message || String(err)));
@@ -293,7 +293,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       setFlashcards(generated);
       
       if (isDriveSignedIn()) {
-        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch(() => {});
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
     } catch (err: any) {
       alert("Failed to generate flashcards: " + (err.message || String(err)));
@@ -323,7 +323,7 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
       setFlashcards(generated);
       
       if (isDriveSignedIn()) {
-        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch(() => {});
+        saveNotesToDrive(selectedDoc.subject || "General", chap.name, "flashcards", generated).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
     } catch (err: any) {
       alert("Failed to generate additional flashcards: " + (err.message || String(err)));
@@ -712,37 +712,37 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
         setSlides(generated);
         setActiveSlideIdx(0);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "slides", generated).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "slides", generated).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       } else if (tabType === "notes") {
         const data = await generateBriefingNotes(textSlices, chap.name, docSubject);
         setNotes(data);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "notes", data).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "notes", data).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       } else if (tabType === "faq") {
         const data = await generateFAQSheet(textSlices, chap.name, docSubject);
         setFaq(data);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "faq", data).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "faq", data).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       } else if (tabType === "timeline") {
         const data = await generateTimeline(textSlices, chap.name, docSubject);
         setTimeline(data);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "timeline", data).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "timeline", data).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       } else if (tabType === "podcast") {
         const data = await generatePodcastScript(textSlices, chap.name, docSubject);
         setPodcast(data);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "podcast", data).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "podcast", data).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       } else if (tabType === "mcq") {
         const data = await generateMCQs(textSlices, chap.name, docSubject);
         setMcqs(data);
         if (isDriveSignedIn()) {
-          saveNotesToDrive(docSubject, chap.name, "mcq", data).catch(() => {});
+          saveNotesToDrive(docSubject, chap.name, "mcq", data).catch((err) => console.error("[Acu] Drive sync error:", err));
         }
       }
     } catch (err: any) {

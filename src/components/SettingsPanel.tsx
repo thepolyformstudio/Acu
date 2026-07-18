@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile } from "@/lib/db";
-import { Key, Globe, Gift, Check, ShieldAlert, Sparkles, RefreshCw, Cloud, CloudOff, AlertTriangle } from "lucide-react";
+import { Key, Globe, Gift, Check, ShieldAlert, Sparkles, RefreshCw, Cloud, CloudOff, AlertTriangle, HelpCircle } from "lucide-react";
 import { 
   signInToDrive, signOutFromDrive, isDriveSignedIn, 
   getDriveSyncStatus, onDriveSyncStatusChange 
 } from "@/lib/googleDrive";
+import { validateApiKey, validateCoupon } from "@/lib/validation";
+import { safeError, logError } from "@/lib/errors";
 
 interface SettingsPanelProps {
   user: UserProfile;
@@ -52,6 +54,8 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
 
   const handleSaveKeys = (e: React.FormEvent) => {
     e.preventDefault();
+    const keyErr = validateApiKey(geminiKey);
+    if (keyErr && geminiKey.trim()) { alert(keyErr); return; }
     if (typeof window !== "undefined") {
       localStorage.setItem("acu_gemini_api_key", geminiKey.trim());
       localStorage.setItem("acu_gemini_free_tier", isFreeTier ? "true" : "false");
@@ -79,8 +83,9 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
       if (!ok) {
         alert("Google Drive sign-in was cancelled or failed. Please try again.");
       }
-    } catch (err: any) {
-      alert("Failed to connect Google Drive: " + (err.message || String(err)));
+    } catch (err) {
+      logError("Drive connection", err);
+      alert(safeError(err, "Failed to connect Google Drive."));
     } finally {
       setDriveConnecting(false);
     }
@@ -95,7 +100,8 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
 
   const handleRedeemCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!coupon.trim()) return;
+    const couponErr = validateCoupon(coupon);
+    if (couponErr) { setCouponError(couponErr); return; }
 
     setCouponError("");
     setCouponSuccess(false);
@@ -106,8 +112,9 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
       setCouponSuccess(true);
       setCoupon("");
       onRefresh();
-    } catch (err: any) {
-      setCouponError(err.message || "Invalid coupon code.");
+    } catch (err) {
+      logError("Coupon redemption", err);
+      setCouponError(safeError(err, "Invalid coupon code."));
     } finally {
       setCouponLoading(false);
     }
@@ -116,9 +123,17 @@ export default function SettingsPanel({ user, onRefresh }: SettingsPanelProps) {
   return (
     <div className="space-y-6 max-w-2xl mx-auto pb-12">
       {/* Page Title */}
-      <div>
-        <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">Settings & Configurations</h2>
-        <p className="text-slate-400 text-sm">Manage your private API credentials and account details.</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-900 pb-4">
+        <div>
+          <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">Settings & Configurations</h2>
+          <p className="text-slate-400 text-sm">Manage your private API credentials and account details.</p>
+        </div>
+        <button
+          onClick={() => window.location.href = "/tutorials"}
+          className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer flex items-center gap-1.5 shrink-0 shadow-lg shadow-violet-600/10"
+        >
+          <HelpCircle size={14} /> Watch Tutorials
+        </button>
       </div>
 
       {/* API Key Box */}

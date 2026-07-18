@@ -47,7 +47,7 @@ export default function Home() {
 
     // Restore Google Drive session if previously connected
     if (isDriveSignedIn()) {
-      tryRestoreDriveSession().catch(() => {});
+      tryRestoreDriveSession().catch((err) => console.error("[Acu] Drive session restore failed:", err));
     }
 
     // Fetch public landing reviews
@@ -128,6 +128,12 @@ export default function Home() {
             <span className="font-display font-bold text-xl tracking-tight text-white">Acu</span>
           </div>
           <div className="flex items-center gap-4">
+            <button
+              onClick={() => window.location.href = "/tutorials"}
+              className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer font-medium"
+            >
+              Tutorials
+            </button>
             <button
               onClick={() => setShowPricing(true)}
               className="text-xs text-slate-400 hover:text-white transition-colors cursor-pointer font-medium"

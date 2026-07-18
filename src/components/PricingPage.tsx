@@ -6,6 +6,8 @@ import {
   Check, X, ArrowLeft, RefreshCw, Sparkles, ShieldCheck, 
   BookOpen, Layers, BarChart2, Cloud, Smartphone, Zap 
 } from "lucide-react";
+import { validateCoupon } from "@/lib/validation";
+import { safeError, logError } from "@/lib/errors";
 
 interface PricingPageProps {
   onBack: () => void;
@@ -48,7 +50,9 @@ export default function PricingPage({ onBack, onUpgrade }: PricingPageProps) {
 
   const handleRedeemCoupon = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!coupon.trim() || !currentUser) return;
+    if (!currentUser) { setCouponError("Please sign in first."); return; }
+    const couponErr = validateCoupon(coupon);
+    if (couponErr) { setCouponError(couponErr); return; }
 
     setCouponError("");
     setCouponSuccess(false);
@@ -59,8 +63,9 @@ export default function PricingPage({ onBack, onUpgrade }: PricingPageProps) {
       setCouponSuccess(true);
       setCoupon("");
       if (onUpgrade) onUpgrade();
-    } catch (err: any) {
-      setCouponError(err.message || "Invalid coupon code.");
+    } catch (err) {
+      logError("Coupon redemption", err);
+      setCouponError(safeError(err, "Invalid coupon code."));
     } finally {
       setCouponLoading(false);
     }

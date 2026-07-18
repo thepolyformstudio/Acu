@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { UserProfile, dbService } from "@/lib/db";
 import { Star, MessageSquare, CheckCircle, AlertCircle } from "lucide-react";
+import { safeError, logError } from "@/lib/errors";
 
 export default function AcuFeedback({ user }: { user: UserProfile }) {
   const [rating, setRating] = useState<number>(0);
@@ -41,8 +42,9 @@ export default function AcuFeedback({ user }: { user: UserProfile }) {
       });
       setSubmitted(true);
       setError("");
-    } catch (err: any) {
-      setError("Failed to submit review: " + err.message);
+    } catch (err) {
+      logError("Feedback submission", err);
+      setError(safeError(err, "Failed to submit review."));
     }
   };
 

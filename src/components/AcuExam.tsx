@@ -421,8 +421,8 @@ export default function AcuExam({
       if (isDriveSignedIn()) {
         loadExamAttemptsFromDrive(activeProfileId).then((all) => {
           all.push(attemptResult);
-          saveExamAttemptsToDrive(activeProfileId, all).catch(() => {});
-        }).catch(() => {});
+          saveExamAttemptsToDrive(activeProfileId, all).catch((err) => console.error("[Acu] Drive sync error:", err));
+        }).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
       localStorage.removeItem("acu_paused_exam_session");
       setStudentAnswers({});
@@ -453,8 +453,8 @@ export default function AcuExam({
       if (isDriveSignedIn()) {
         loadExamAttemptsFromDrive(activeProfileId).then((all) => {
           const filtered = all.filter((a: any) => a.id !== scorecard.id);
-          saveExamAttemptsToDrive(activeProfileId, filtered).catch(() => {});
-        }).catch(() => {});
+          saveExamAttemptsToDrive(activeProfileId, filtered).catch((err) => console.error("[Acu] Drive sync error:", err));
+        }).catch((err) => console.error("[Acu] Drive sync error:", err));
       }
       
       setScorecard(null);

@@ -4,6 +4,8 @@ import React, { useState, useEffect } from "react";
 import { dbService, UserProfile } from "@/lib/db";
 import { Mail, Lock, User, Check, RefreshCw, ExternalLink, KeyRound, Cloud, CloudOff } from "lucide-react";
 import { signInToDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { validateEmail, validatePassword, validateApiKey } from "@/lib/validation";
+import { safeError, logError } from "@/lib/errors";
 
 interface AuthCardProps {
   onSuccess: (profile: UserProfile) => void;
@@ -40,6 +42,12 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    const emailErr = validateEmail(email);
+    if (emailErr) { setError(emailErr); return; }
+    const passErr = validatePassword(password);
+    if (passErr) { setError(passErr); return; }
+
     setLoading(true);
 
     try {
@@ -58,8 +66,9 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
         setPendingProfile(profile);
         setShowOnboarding(true);
       }
-    } catch (err: any) {
-      setError(err.message || "An authentication error occurred.");
+    } catch (err) {
+      logError("Auth sign in", err);
+      setError(safeError(err, "Authentication failed. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -78,9 +87,10 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
         setPendingProfile(profile);
         setShowOnboarding(true);
       }
-    } catch (err: any) {
-      if (err.message !== "__CANCELLED__") {
-        setError(err.message || "Google Sign-In failed.");
+    } catch (err) {
+      if (err instanceof Error && err.message !== "__CANCELLED__") {
+        logError("Google sign in", err);
+        setError(safeError(err, "Google Sign-In failed."));
       }
     } finally {
       setLoading(false);
@@ -89,7 +99,9 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
 
   const handleSaveApiKey = () => {
     const trimmed = apiKeyInput.trim();
-    if (!trimmed) return;
+    const keyErr = validateApiKey(trimmed);
+    if (keyErr) { setError(keyErr); return; }
+    setError("");
     if (typeof window !== "undefined") {
       localStorage.setItem("acu_gemini_api_key", trimmed);
     }

@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
-import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
+import { generateChapterMap, extractChapterTitle, BookMetadata, MOCK_API_KEY } from "@/lib/gemini";
+import { safeError, logError } from "@/lib/errors";
+import { validateFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
 import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { 
   Upload, FileText, Trash2, FolderOpen, Calendar, 
@@ -59,6 +61,15 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     if (!user.is_premium && documents.length + newUploadCount > 2) {
       alert(`Free accounts are limited to 2 uploaded documents. You currently have ${documents.length} and are attempting to upload ${newUploadCount}. Upgrade to Premium to upload unlimited study materials!`);
       return;
+    }
+
+    for (const f of Array.from(files)) {
+      const fileErr = validateFile(f);
+      if (fileErr) {
+        alert(`Invalid file "${f.name}": ${fileErr}`);
+        e.target.value = '';
+        return;
+      }
     }
 
     setStagedFiles(Array.from(files).map(f => ({ file: f, title: f.name.replace(/\.[^/.]+$/, "") })));
@@ -124,9 +135,8 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         };
 
         await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
-        // Async backup to Google Drive (non-blocking)
         if (isDriveSignedIn()) {
-          saveDocumentToDrive(newDoc).catch(() => {});
+          saveDocumentToDrive(newDoc).catch((err) => logError("Drive backup", err));
         }
       }
 
@@ -142,8 +152,9 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         setStatusMessage("");
         onRefresh();
       }, 1500);
-    } catch (err: any) {
-      alert("Ingestion failed: " + (err.message || String(err)));
+    } catch (err) {
+      logError("File ingestion", err);
+      alert(safeError(err, "File ingestion failed. Please check that your file is a valid PDF, DOCX, or TXT."));
       setUploading(false);
       setStatusMessage("");
       onRefresh();
@@ -174,7 +185,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
     await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
     if (isDriveSignedIn()) {
-      saveDocumentToDrive(newDoc).catch(() => {});
+      saveDocumentToDrive(newDoc).catch((err) => logError("Drive backup (manual mapping)", err));
     }
 
     setManualMappingQueue(null);
@@ -189,9 +200,8 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const handleDeleteDocument = async (docId: string) => {
     if (confirm("Are you sure you want to delete this document from your library?")) {
       await dbService.deleteDocumentSource(user?.id || "anonymous", docId);
-      // Async delete from Google Drive (non-blocking)
       if (isDriveSignedIn()) {
-        deleteDocumentFromDrive(docId).catch(() => {});
+        deleteDocumentFromDrive(docId).catch((err) => logError("Drive delete", err));
       }
       onRefresh();
     }
@@ -226,6 +236,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                       }
                       if (btn) btn.innerText = 'Synced ✓';
                     } catch (e) {
+                      logError("Library backup sync", e);
                       if (btn) btn.innerText = 'Sync Failed';
                     }
                     setTimeout(() => { if (btn) btn.innerText = 'Backup Library'; }, 2000);
@@ -314,7 +325,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                   <RefreshCw className="animate-spin text-violet-400" size={16} />
                   <span className="text-xs font-semibold text-violet-300 truncate max-w-[200px]">{statusMessage}</span>
                 </div>
-              ) : !isDriveSignedIn() ? (
+              ) : (!isDriveSignedIn() && !(typeof window !== "undefined" && localStorage.getItem("acu_gemini_api_key") === MOCK_API_KEY)) ? (
                 <div className="group relative">
                   <button disabled className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-500 rounded-xl text-xs font-semibold tracking-wide cursor-not-allowed text-center h-10 w-full sm:w-auto">
                     <Upload size={14} /> Upload Textbook

@@ -1,0 +1,650 @@
+[debug] [2026-07-19T05:53:03.582Z] ----------------------------------------------------------------------
+[debug] [2026-07-19T05:53:03.584Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-19T05:53:03.584Z] CLI Version:   15.23.0
+[debug] [2026-07-19T05:53:03.584Z] Platform:      win32
+[debug] [2026-07-19T05:53:03.584Z] Node Version:  v24.16.0
+[debug] [2026-07-19T05:53:03.584Z] Detected Agent: open_code
+[debug] [2026-07-19T05:53:03.584Z] Time:          Sun Jul 19 2026 11:23:03 GMT+0530 (India Standard Time)
+[debug] [2026-07-19T05:53:03.584Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-19T05:53:05.736Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-19T05:53:05.736Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-19T05:53:05.737Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-19T05:53:05.747Z] Checked if tokens are valid: false, expires at: 1784400463390
+[debug] [2026-07-19T05:53:05.747Z] Checked if tokens are valid: false, expires at: 1784400463390
+[debug] [2026-07-19T05:53:05.747Z] > refreshing access token with scopes: []
+[debug] [2026-07-19T05:53:05.749Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-07-19T05:53:05.749Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-19T05:53:06.011Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-07-19T05:53:06.011Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-07-19T05:53:06.021Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-19T05:53:06.021Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-19T05:53:06.021Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:53:07.533Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-19T05:53:07.533Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:53:07.534Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:07.534Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:07.534Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:53:08.090Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-19T05:53:08.090Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-19T05:53:10.528Z] defaultcredentials: writing to file C:\Users\VI\AppData\Roaming\firebase\thepolyformstudio_gmail_com_application_default_credentials.json
+[debug] [2026-07-19T05:53:10.535Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:10.535Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:10.535Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-19T05:53:12.069Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:53:12.069Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:53:12.069Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:12.069Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:12.070Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-19T05:53:12.918Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:53:12.918Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:53:12.918Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:12.918Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:12.918Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-19T05:53:14.897Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-19T05:53:14.897Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-19T05:53:18.880Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:18.880Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:18.880Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:53:20.911Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:53:20.911Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of E:\Antigravity\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * E:\Antigravity\SmartGuide\package-lock.json
+
+
+[info] ▲ Next.js 16.2.10 (Turbopack)
+
+[info] - Environments: .env
+
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 12.1s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 3.9s ...
+
+[info]   Collecting page data using 10 workers ...
+
+[info]   Generating static pages using 10 workers (0/9) ...
+
+[info]   Generating static pages using 10 workers (2/9) 
+
+[info]   Generating static pages using 10 workers (4/9) 
+
+[info] [Acu DB] Connected successfully to Cloud Firebase.
+
+[info]   Generating static pages using 10 workers (6/9) 
+
+[info] ✓ Generating static pages using 10 workers (9/9) in 924ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ai/generate
+├ ƒ /api/payments/create-order
+├ ƒ /api/payments/verify
+├ ƒ /api/payments/webhook
+└ ○ /tutorials
+
+
+[info] 
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/ai/generate/route
+[info]  • non-static component /api/payments/create-order/route
+[info]  • non-static component /api/payments/verify/route
+[info]  • non-static component /api/payments/webhook/route
+[info] 
+[debug] [2026-07-19T05:53:52.033Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:52.033Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:53:52.033Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:53:53.381Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:53:53.381Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-07-19T05:54:00.856Z] Error: EPERM: operation not permitted, symlink 'E:\Antigravity\SmartGuide\node_modules\firebase-admin' -> 'E:\Antigravity\SmartGuide\.firebase\acudex\functions\.next\node_modules\firebase-admin-dd10a085ec3b5449'
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-07-19T05:54:43.136Z] ----------------------------------------------------------------------
+[debug] [2026-07-19T05:54:43.138Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-19T05:54:43.138Z] CLI Version:   15.23.0
+[debug] [2026-07-19T05:54:43.138Z] Platform:      win32
+[debug] [2026-07-19T05:54:43.138Z] Node Version:  v24.16.0
+[debug] [2026-07-19T05:54:43.138Z] Detected Agent: open_code
+[debug] [2026-07-19T05:54:43.139Z] Time:          Sun Jul 19 2026 11:24:43 GMT+0530 (India Standard Time)
+[debug] [2026-07-19T05:54:43.139Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-19T05:54:44.160Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-19T05:54:44.160Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-19T05:54:44.160Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-19T05:54:44.172Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:44.172Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:44.172Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-19T05:54:44.173Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-19T05:54:44.173Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:54:45.694Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-19T05:54:45.694Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:54:45.694Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:45.695Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:45.695Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:54:46.206Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-19T05:54:46.207Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-19T05:54:47.984Z] defaultcredentials: writing to file C:\Users\VI\AppData\Roaming\firebase\thepolyformstudio_gmail_com_application_default_credentials.json
+[debug] [2026-07-19T05:54:47.985Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:47.985Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:47.985Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-19T05:54:49.513Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:54:49.513Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:54:49.514Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:49.514Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:49.514Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-19T05:54:50.361Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:54:50.361Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:54:50.361Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:50.361Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:50.361Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-19T05:54:52.494Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-19T05:54:52.494Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-19T05:54:56.533Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:56.533Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:54:56.533Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:54:57.850Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:54:57.850Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of E:\Antigravity\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * E:\Antigravity\SmartGuide\package-lock.json
+
+
+[info] ▲ Next.js 16.2.10 (Turbopack)
+- Environments: .env
+
+[info] 
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 8.1s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 6.0s ...
+
+[info]   Collecting page data using 10 workers ...
+
+[info]   Generating static pages using 10 workers (0/9) ...
+
+[info]   Generating static pages using 10 workers (2/9) 
+
+[info]   Generating static pages using 10 workers (4/9) 
+
+[info] [Acu DB] Connected successfully to Cloud Firebase.
+
+[info]   Generating static pages using 10 workers (6/9) 
+
+[info] ✓ Generating static pages using 10 workers (9/9) in 869ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ai/generate
+├ ƒ /api/payments/create-order
+├ ƒ /api/payments/verify
+├ ƒ /api/payments/webhook
+└ ○ /tutorials
+
+
+[info] 
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/ai/generate/route
+[info]  • non-static component /api/payments/create-order/route
+[info]  • non-static component /api/payments/verify/route
+[info]  • non-static component /api/payments/webhook/route
+[info] 
+[debug] [2026-07-19T05:55:20.433Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:55:20.434Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:55:20.434Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:55:21.719Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:55:21.719Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-07-19T05:55:26.640Z] Error: EPERM: operation not permitted, symlink 'E:\Antigravity\SmartGuide\node_modules\firebase-admin' -> 'E:\Antigravity\SmartGuide\.firebase\acudex\functions\.next\node_modules\firebase-admin-dd10a085ec3b5449'
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-07-19T05:56:18.248Z] ----------------------------------------------------------------------
+[debug] [2026-07-19T05:56:18.250Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-19T05:56:18.250Z] CLI Version:   15.23.0
+[debug] [2026-07-19T05:56:18.250Z] Platform:      win32
+[debug] [2026-07-19T05:56:18.250Z] Node Version:  v24.16.0
+[debug] [2026-07-19T05:56:18.250Z] Detected Agent: open_code
+[debug] [2026-07-19T05:56:18.251Z] Time:          Sun Jul 19 2026 11:26:18 GMT+0530 (India Standard Time)
+[debug] [2026-07-19T05:56:18.251Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-19T05:56:19.192Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-19T05:56:19.193Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-19T05:56:19.193Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-19T05:56:19.204Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:19.204Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:19.205Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-19T05:56:19.205Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-19T05:56:19.205Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:56:20.733Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-19T05:56:20.733Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T05:56:20.734Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:20.734Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:20.734Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:56:21.425Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-19T05:56:21.425Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-19T05:56:23.125Z] defaultcredentials: writing to file C:\Users\VI\AppData\Roaming\firebase\thepolyformstudio_gmail_com_application_default_credentials.json
+[debug] [2026-07-19T05:56:23.127Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:23.127Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:23.128Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-19T05:56:24.607Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:56:24.607Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:56:24.608Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:24.608Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:24.608Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-19T05:56:25.332Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T05:56:25.332Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T05:56:25.332Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:25.332Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:25.332Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-19T05:56:27.154Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-19T05:56:27.154Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-19T05:56:31.123Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:31.123Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:31.123Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:56:32.555Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:56:32.555Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of E:\Antigravity\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * E:\Antigravity\SmartGuide\package-lock.json
+
+
+[info] ▲ Next.js 16.2.10 (Turbopack)
+
+[info] - Environments: .env
+
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 10.2s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 6.0s ...
+
+[info]   Collecting page data using 10 workers ...
+
+[info]   Generating static pages using 10 workers (0/9) ...
+
+[info]   Generating static pages using 10 workers (2/9) 
+
+[info]   Generating static pages using 10 workers (4/9) 
+
+[info] [Acu DB] Connected successfully to Cloud Firebase.
+
+[info]   Generating static pages using 10 workers (6/9) 
+
+[info] ✓ Generating static pages using 10 workers (9/9) in 897ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ai/generate
+├ ƒ /api/payments/create-order
+├ ƒ /api/payments/verify
+├ ƒ /api/payments/webhook
+└ ○ /tutorials
+
+
+
+[info] ○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/ai/generate/route
+[info]  • non-static component /api/payments/create-order/route
+[info]  • non-static component /api/payments/verify/route
+[info]  • non-static component /api/payments/webhook/route
+[info] 
+[debug] [2026-07-19T05:56:58.155Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:58.156Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T05:56:58.156Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T05:56:59.482Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T05:56:59.482Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-07-19T05:57:04.625Z] Error: EPERM: operation not permitted, symlink 'E:\Antigravity\SmartGuide\node_modules\firebase-admin' -> 'E:\Antigravity\SmartGuide\.firebase\acudex\functions\.next\node_modules\firebase-admin-dd10a085ec3b5449'
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-07-19T06:00:35.726Z] ----------------------------------------------------------------------
+[debug] [2026-07-19T06:00:35.727Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting --debug
+[debug] [2026-07-19T06:00:35.728Z] CLI Version:   15.23.0
+[debug] [2026-07-19T06:00:35.728Z] Platform:      win32
+[debug] [2026-07-19T06:00:35.728Z] Node Version:  v24.16.0
+[debug] [2026-07-19T06:00:35.728Z] Detected Agent: open_code
+[debug] [2026-07-19T06:00:35.728Z] Time:          Sun Jul 19 2026 11:30:35 GMT+0530 (India Standard Time)
+[debug] [2026-07-19T06:00:35.728Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-19T06:00:36.686Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-19T06:00:36.687Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-19T06:00:36.687Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-19T06:00:36.699Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:36.699Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:36.700Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-19T06:00:36.700Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-19T06:00:36.700Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T06:00:38.250Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-19T06:00:38.251Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T06:00:38.251Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:38.251Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:38.252Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:00:38.741Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-19T06:00:38.742Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-19T06:00:40.517Z] defaultcredentials: writing to file C:\Users\VI\AppData\Roaming\firebase\thepolyformstudio_gmail_com_application_default_credentials.json
+[debug] [2026-07-19T06:00:40.518Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:40.518Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:40.518Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-19T06:00:41.888Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T06:00:41.888Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T06:00:41.889Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:41.889Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:41.889Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-19T06:00:42.654Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T06:00:42.654Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T06:00:42.655Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:42.655Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:42.655Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-19T06:00:44.034Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-19T06:00:44.034Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-19T06:00:47.957Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:47.957Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:00:47.957Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:00:49.179Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T06:00:49.179Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of E:\Antigravity\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * E:\Antigravity\SmartGuide\package-lock.json
+
+
+[info] ▲ Next.js 16.2.10 (Turbopack)
+
+[info] - Environments: .env
+
+
+[info]   Creating an optimized production build ...
+
+[info] 
+[198.16ms] [@tailwindcss/postcss] src\app\globals.css
+
+[info] [  0.06ms]   ↳ Quick bail check
+[ 32.82ms]   ↳ Setup compiler
+[  0.41ms]     ↳ PostCSS AST -> Tailwind CSS AST
+[ 32.38ms]     ↳ Create compiler
+[  0.15ms]   ↳ Register full rebuild paths
+[  2.52ms]   ↳ Setup scanner
+[ 58.77ms]   ↳ Scan for candidates
+[  8.98ms]   ↳ Register dependency messages
+[ 67.96ms]   ↳ Build utilities
+[ 19.96ms]   ↳ Optimization
+[  1.62ms]     ↳ AST -> CSS
+[ 12.42ms]     ↳ Lightning CSS
+[  5.87ms]     ↳ CSS -> PostCSS AST
+[  6.47ms]   ↳ Update PostCSS AST
+
+
+[info] ✓ Compiled successfully in 9.0s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 5.5s ...
+
+[info]   Collecting page data using 10 workers ...
+
+[info]   Generating static pages using 10 workers (0/9) ...
+
+[info]   Generating static pages using 10 workers (2/9) 
+
+[info]   Generating static pages using 10 workers (4/9) 
+
+[info] [Acu DB] Connected successfully to Cloud Firebase.
+
+[info]   Generating static pages using 10 workers (6/9) 
+
+[info] ✓ Generating static pages using 10 workers (9/9) in 849ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ai/generate
+├ ƒ /api/payments/create-order
+├ ƒ /api/payments/verify
+├ ƒ /api/payments/webhook
+└ ○ /tutorials
+
+
+
+[info] ○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/ai/generate/route
+[info]  • non-static component /api/payments/create-order/route
+[info]  • non-static component /api/payments/verify/route
+[info]  • non-static component /api/payments/webhook/route
+[info] 
+[debug] [2026-07-19T06:01:13.177Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:01:13.177Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:01:13.177Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:01:14.471Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T06:01:14.472Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-07-19T06:01:16.397Z] Error: EPERM: operation not permitted, symlink 'E:\Antigravity\SmartGuide\node_modules\firebase-admin' -> 'E:\Antigravity\SmartGuide\.firebase\acudex\functions\.next\node_modules\firebase-admin-dd10a085ec3b5449'
+[error] 
+[error] Error: An unexpected error has occurred.
+[debug] [2026-07-19T06:04:14.052Z] ----------------------------------------------------------------------
+[debug] [2026-07-19T06:04:14.055Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only hosting
+[debug] [2026-07-19T06:04:14.055Z] CLI Version:   15.23.0
+[debug] [2026-07-19T06:04:14.055Z] Platform:      win32
+[debug] [2026-07-19T06:04:14.055Z] Node Version:  v24.16.0
+[debug] [2026-07-19T06:04:14.055Z] Detected Agent: unknown
+[debug] [2026-07-19T06:04:14.055Z] Time:          Sun Jul 19 2026 11:34:14 GMT+0530 (India Standard Time)
+[debug] [2026-07-19T06:04:14.055Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-19T06:04:14.984Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-19T06:04:14.984Z] > authorizing via signed-in user (thepolyformstudio@gmail.com)
+[debug] [2026-07-19T06:04:14.984Z] [iam] checking project acu1-9f3e8 for permissions ["firebase.projects.get","firebasehosting.sites.update"]
+[debug] [2026-07-19T06:04:14.994Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:14.994Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:14.995Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions [none]
+[debug] [2026-07-19T06:04:14.995Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions  x-goog-user-project=acu1-9f3e8
+[debug] [2026-07-19T06:04:14.995Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T06:04:16.551Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions 200
+[debug] [2026-07-19T06:04:16.551Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/acu1-9f3e8:testIamPermissions {"permissions":["firebase.projects.get","firebasehosting.sites.update"]}
+[debug] [2026-07-19T06:04:16.552Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:16.552Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:16.552Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:04:17.297Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 200
+[debug] [2026-07-19T06:04:17.298Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8 {"projectId":"acu1-9f3e8","projectNumber":"963945863708","displayName":"Acu1","name":"projects/acu1-9f3e8","resources":{"hostingSite":"acu1-9f3e8"},"state":"ACTIVE","labels":{"firebase":"enabled"},"etag":"1_6b495551-59e7-4429-94e2-2d0bb729b2c0"}
+[debug] [2026-07-19T06:04:19.010Z] defaultcredentials: writing to file C:\Users\VI\AppData\Roaming\firebase\thepolyformstudio_gmail_com_application_default_credentials.json
+[debug] [2026-07-19T06:04:19.010Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:19.011Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:19.011Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites pageToken=&pageSize=10
+[debug] [2026-07-19T06:04:20.430Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T06:04:20.430Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T06:04:20.430Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:20.430Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:20.430Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 
+[debug] [2026-07-19T06:04:21.191Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites 200
+[debug] [2026-07-19T06:04:21.191Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites {"sites":[{"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"},{"name":"projects/acu1-9f3e8/sites/acudex","defaultUrl":"https://acudex.web.app","type":"USER_SITE"}]}
+[debug] [2026-07-19T06:04:21.191Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:21.191Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:21.191Z] >>> [apiv2][query] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config [none]
+[debug] [2026-07-19T06:04:22.995Z] <<< [apiv2][status] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config 200
+[debug] [2026-07-19T06:04:22.995Z] <<< [apiv2][body] GET https://firebase.googleapis.com/v1beta1/projects/acu1-9f3e8/webApps/-/config {"projectId":"acu1-9f3e8","appId":"1:963945863708:web:71442a7d87eb0e354dddd9","storageBucket":"acu1-9f3e8.firebasestorage.app","apiKey":"AIzaSyAw3KNaLua9tXBoJaBa7k8NfEJ0Q14NAcw","authDomain":"acu1-9f3e8.firebaseapp.com","messagingSenderId":"963945863708","measurementId":"G-6E2VTHSETE","projectNumber":"963945863708","version":"2"}
+[info] 
+   Thank you for trying our early preview of Next.js support on Firebase Hosting.
+   During the preview, support is best-effort and breaking changes can be expected. Proceed with caution.
+   The integration is known to work with Next.js version 12 - 16.0. You may encounter errors.
+
+   Documentation: https://firebase.google.com/docs/hosting/frameworks/nextjs
+   File a bug: https://github.com/firebase/firebase-tools/issues/new?template=bug_report.md
+   Submit a feature request: https://github.com/firebase/firebase-tools/issues/new?template=feature_request.md
+
+   We'd love to learn from you. Express your interest in helping us shape the future of Firebase Hosting: https://goo.gle/41enW5X
+
+[debug] [2026-07-19T06:04:26.696Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:26.696Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:26.697Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:04:27.934Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T06:04:27.935Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[info] ⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of E:\Antigravity\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * E:\Antigravity\SmartGuide\package-lock.json
+
+
+[info] ▲ Next.js 16.2.10 (Turbopack)
+- Environments: .env
+
+[info] 
+
+[info]   Creating an optimized production build ...
+
+[info] ✓ Compiled successfully in 6.7s
+
+[info]   Running TypeScript ...
+
+[info]   Finished TypeScript in 5.2s ...
+
+[info]   Collecting page data using 10 workers ...
+
+[info]   Generating static pages using 10 workers (0/9) ...
+
+[info]   Generating static pages using 10 workers (2/9) 
+
+[info]   Generating static pages using 10 workers (4/9) 
+
+[info] [Acu DB] Connected successfully to Cloud Firebase.
+
+[info]   Generating static pages using 10 workers (6/9) 
+
+[info] ✓ Generating static pages using 10 workers (9/9) in 790ms
+
+[info]   Finalizing page optimization ...
+
+[info] 
+
+[info] Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/ai/generate
+├ ƒ /api/payments/create-order
+├ ƒ /api/payments/verify
+├ ƒ /api/payments/webhook
+└ ○ /tutorials
+
+
+[info] 
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+[info] Building a Cloud Function to run this application. This is needed due to:
+[info]  • non-static component /api/ai/generate/route
+[info]  • non-static component /api/payments/create-order/route
+[info]  • non-static component /api/payments/verify/route
+[info]  • non-static component /api/payments/webhook/route
+[info] 
+[debug] [2026-07-19T06:04:47.551Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:47.551Z] Checked if tokens are valid: true, expires at: 1784443985011
+[debug] [2026-07-19T06:04:47.551Z] >>> [apiv2][query] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 [none]
+[debug] [2026-07-19T06:04:48.844Z] <<< [apiv2][status] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 200
+[debug] [2026-07-19T06:04:48.844Z] <<< [apiv2][body] GET https://firebasehosting.googleapis.com/v1beta1/projects/acu1-9f3e8/sites/acu1-9f3e8 {"name":"projects/acu1-9f3e8/sites/acu1-9f3e8","defaultUrl":"https://acu1-9f3e8.web.app","type":"DEFAULT_SITE"}
+[debug] [2026-07-19T06:05:16.740Z] Error: Command failed: npm i --omit dev --no-audit
+    at genericNodeError (node:internal/errors:985:15)
+    at wrappedFn (node:internal/errors:539:14)
+    at checkExecSyncError (node:child_process:925:11)
+    at execSync (node:child_process:997:15)
+    at prepareFrameworks (C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\frameworks\index.js:373:42)
+    at async deploy (C:\Users\VI\AppData\Roaming\npm\node_modules\firebase-tools\lib\deploy\index.js:80:9)
+[error] 
+[error] Error: An unexpected error has occurred.

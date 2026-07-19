@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile, DocumentSource, ExamAttempt, AppReview } from "@/lib/db";
 import AuthCard from "@/components/AuthCard";
-import { 
-  Sparkles, CheckCircle, Smartphone, ShieldCheck, 
+import { Sparkles, CheckCircle, Smartphone, ShieldCheck, 
   LogOut, Settings, BarChart2, BookOpen, Layers, HelpCircle, UserCheck, FolderOpen, MessageSquare, Star
 } from "lucide-react";
+import Link from "next/link";
 import { tryRestoreDriveSession, isDriveSignedIn } from "@/lib/googleDrive";
 
 // Sub-components will be integrated directly
@@ -243,8 +243,11 @@ export default function Home() {
         )}
 
         {/* Footer */}
-        <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-600 z-10 border-t border-slate-900 pt-6">
-          © {new Date().getFullYear()} Acu Study Companion. Know Thyself.
+        <footer className="max-w-6xl w-full mx-auto text-center text-xs text-slate-600 z-10 border-t border-slate-900 pt-6 flex items-center justify-center gap-4">
+          <span>© {new Date().getFullYear()} Acu Study Companion. Know Thyself.</span>
+          <Link href="/privacy" className="text-slate-500 hover:text-violet-400 transition-colors underline underline-offset-2">
+            Privacy Policy
+          </Link>
         </footer>
       </main>
     );

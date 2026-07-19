@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile, DocumentSource, ExamAttempt, AppReview } from "@/lib/db";
 import AuthCard from "@/components/AuthCard";
-import { Sparkles, CheckCircle, Smartphone, ShieldCheck, 
+import { Sparkles, CheckCircle, Smartphone, ShieldCheck, Shield,
   LogOut, Settings, BarChart2, BookOpen, Layers, HelpCircle, UserCheck, FolderOpen, MessageSquare, Star
 } from "lucide-react";
 import Link from "next/link";
@@ -159,7 +159,7 @@ export default function Home() {
             </h1>
             
             <p className="text-slate-400 text-base md:text-lg max-w-xl">
-              Upload your textbooks, and Acu turns them into slides, flashcards, practice exams, and graded mock tests — powered by AI, stored privately in your own Google Drive.
+              Upload your textbooks, and Acu turns them into slides, flashcards, practice exams, and graded mock tests — powered by AI, synced to the cloud for access across devices.
             </p>
 
             {/* Feature Checkmarks */}
@@ -396,6 +396,16 @@ export default function Home() {
               Pricing
             </button>
           )}
+
+          <div className="border-t border-slate-900 my-4 pt-4"></div>
+
+          <Link
+            href="/privacy"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-slate-500 hover:text-violet-400 hover:bg-slate-950/50 transition-all"
+          >
+            <Shield size={18} />
+            Privacy Policy
+          </Link>
         </aside>
 
         {/* Main Stage Panel */}
@@ -529,6 +539,14 @@ export default function Home() {
           <Settings size={18} />
           <span className="text-[10px] font-semibold">Settings</span>
         </button>
+
+        <Link
+          href="/privacy"
+          className="flex flex-col items-center gap-1 p-2 rounded-xl transition-all text-slate-500 hover:text-violet-400"
+        >
+          <Shield size={18} />
+          <span className="text-[10px] font-semibold">Privacy</span>
+        </Link>
       </nav>
     </div>
   );

@@ -4,11 +4,28 @@
   },
   "hosting": {
     "site": "acudex",
-    "source": ".",
+    "public": ".firebase/acudex/hosting",
     "ignore": [
       "firebase.json",
       "**/.*",
       "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/privacy",
+        "destination": "/privacy.html"
+      },
+      {
+        "source": "/tutorials",
+        "destination": "/tutorials.html"
+      },
+      {
+        "source": "/api/**",
+        "run": {
+          "serviceId": "ssracudex",
+          "region": "us-central1"
+        }
+      }
     ]
   }
 }

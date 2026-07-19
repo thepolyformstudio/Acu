@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles, BookOpen, KeyRound, UploadCloud, GraduationCap, Clock, Play, X } from "lucide-react";
-import { MOCK_API_KEY } from "@/lib/gemini";
+import { ArrowLeft, Sparkles, UploadCloud, GraduationCap, Clock, Play, X } from "lucide-react";
 
 interface TutorialCardProps {
   title: string;
@@ -164,19 +163,6 @@ export default function TutorialsPage() {
       <div className="max-w-6xl w-full mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 z-10 mb-12">
         <TutorialCard
           step="Step 1"
-          title="Account Setup & API Key"
-          description="Register your account and configure your free Google Gemini API key to activate the local AI model."
-          videoSrc="/videos/registration_tutorial.webp"
-          icon={<KeyRound size={18} />}
-          bullets={[
-            "Sign up as a Student or Parent",
-            "Generate free Gemini API Key",
-            `Configure mock key ${MOCK_API_KEY}`,
-            "Recommended: Google Login for backup"
-          ]}
-        />
-        <TutorialCard
-          step="Step 2"
           title="Upload & Syllabus Mapping"
           description="Upload textbooks or study materials and map syllabus chapters to index them in your library."
           videoSrc="/videos/upload_tutorial.webp"
@@ -184,12 +170,12 @@ export default function TutorialsPage() {
           bullets={[
             "Select active subject from library dropdown",
             "Upload textbook PDFs or text documents",
-            "Syllabus indexing via Single Chapter",
+            "Syllabus indexing via Single Chapter mode",
             "Visual chapter mapping list creation"
           ]}
         />
         <TutorialCard
-          step="Step 3"
+          step="Step 2"
           title="Generate Summaries & Notes"
           description="Convert your uploaded indexed chapters into summaries, flashcards, briefing notes, and more."
           videoSrc=""
@@ -203,7 +189,7 @@ export default function TutorialsPage() {
           ]}
         />
         <TutorialCard
-          step="Step 4"
+          step="Step 3"
           title="Exam Generation & Grading"
           description="Create custom exams from your study materials and get instant AI-powered grading."
           videoSrc=""

@@ -1137,16 +1137,38 @@ export default function AcuExam({
                                   id={`handwritten-file-upload-${q.id}`}
                                   onChange={async (e) => {
                                     const file = e.target.files?.[0];
-                                    if (file) {
-                                      const reader = new FileReader();
-                                      reader.onloadend = () => {
-                                        setStudentAnswerImages({
-                                          ...studentAnswerImages,
-                                          [q.id]: reader.result as string
-                                        });
-                                      };
-                                      reader.readAsDataURL(file);
+                                    if (!file) return;
+
+                                    if (!file.type.startsWith("image/")) {
+                                      alert("Please upload an image file (JPEG, PNG, etc.).");
+                                      e.target.value = "";
+                                      return;
                                     }
+
+                                    const maxSize = 5 * 1024 * 1024;
+                                    if (file.size > maxSize) {
+                                      alert("Image is too large. Maximum size is 5 MB.");
+                                      e.target.value = "";
+                                      return;
+                                    }
+
+                                    if (file.size === 0) {
+                                      alert("The image file appears to be empty.");
+                                      e.target.value = "";
+                                      return;
+                                    }
+
+                                    const reader = new FileReader();
+                                    reader.onloadend = () => {
+                                      setStudentAnswerImages({
+                                        ...studentAnswerImages,
+                                        [q.id]: reader.result as string
+                                      });
+                                    };
+                                    reader.onerror = () => {
+                                      alert("Failed to read the image file. Please try again.");
+                                    };
+                                    reader.readAsDataURL(file);
                                   }}
                                   className="hidden"
                                 />

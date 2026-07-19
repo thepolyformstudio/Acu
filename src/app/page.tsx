@@ -433,7 +433,6 @@ export default function Home() {
           {activeTab === "settings" && (
             <SettingsPanel 
               user={activeUser} 
-              onRefresh={refreshData}
             />
           )}
           {activeTab === "feedback" && activeUser.role !== 'admin' && (

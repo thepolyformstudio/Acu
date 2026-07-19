@@ -1,6 +1,13 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer } from "firebase/firestore";
+import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt } from "./sync";
+
+export const INTERNAL_TESTER_EMAIL = "ejmultiverse@gmail.com";
+
+export function isInternalTester(email: string): boolean {
+  return email.toLowerCase().trim() === INTERNAL_TESTER_EMAIL;
+}
 
 // Define TypeScript interfaces
 export interface UserProfile {
@@ -10,6 +17,7 @@ export interface UserProfile {
   is_premium: boolean;
   coupon_applied: string | null;
   created_at: string;
+  premium_expires_at?: string | null;
 }
 
 export interface ChildProfile {
@@ -122,21 +130,32 @@ const saveMockData = (key: string, data: any) => {
 // 3. Unified Database & Authentication Service Methods
 // -------------------------------------------------------------
 
+export function checkPremiumExpiry(profile: UserProfile): UserProfile {
+  if (isInternalTester(profile.email)) {
+    return { ...profile, is_premium: true, premium_expires_at: null };
+  }
+  if (profile.premium_expires_at && new Date() > new Date(profile.premium_expires_at)) {
+    return { ...profile, is_premium: false, premium_expires_at: null };
+  }
+  return profile;
+}
+
 export const dbService = {
   // Check total premium users count to enforce the 100-user early bird limit
   async getPremiumUserCount(): Promise<number> {
     if (isFirebaseConfigured && firestore) {
       try {
         const q = query(collection(firestore, "profiles"), where("is_premium", "==", true));
-        const snapshot = await getCountFromServer(q);
-        return snapshot.data().count;
+        const snapshot = await getDocs(q);
+        const allPremium = snapshot.docs.map(d => d.data() as UserProfile);
+        return allPremium.filter(p => p.coupon_applied !== "INTERNAL_TESTER").length;
       } catch (e) {
         console.error("Firebase getPremiumUserCount error:", e);
         return 0;
       }
     } else {
       const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
-      return Object.values(profiles).filter((p: any) => p.is_premium).length;
+      return Object.values(profiles).filter((p: any) => p.is_premium && p.coupon_applied !== "INTERNAL_TESTER").length;
     }
   },
 
@@ -148,7 +167,8 @@ export const dbService = {
       
       // Determine premium auto-activation limit
       const currentPremiumCount = await this.getPremiumUserCount();
-      const shouldBePremium = currentPremiumCount < 100;
+      const isInternal = isInternalTester(email);
+      const shouldBePremium = isInternal || currentPremiumCount < 100;
       
       const finalRole = email.toLowerCase().trim() === 'admin@acu.com' ? 'admin' : role;
 
@@ -157,8 +177,9 @@ export const dbService = {
         email,
         role: finalRole,
         is_premium: shouldBePremium,
-        coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
-        created_at: new Date().toISOString()
+        coupon_applied: isInternal ? "INTERNAL_TESTER" : (shouldBePremium ? "BETA_EARLY_BIRD" : null),
+        created_at: new Date().toISOString(),
+        premium_expires_at: isInternal ? null : (shouldBePremium ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString() : null)
       };
 
       await setDoc(doc(firestore, "profiles", uid), profile);
@@ -175,7 +196,8 @@ export const dbService = {
 
       const uid = "mock_user_" + Math.random().toString(36).substring(2, 9);
       const currentPremiumCount = await this.getPremiumUserCount();
-      const shouldBePremium = currentPremiumCount < 100;
+      const isInternal = isInternalTester(email);
+      const shouldBePremium = isInternal || currentPremiumCount < 100;
       
       const finalRole = emailLower === 'admin@acu.com' ? 'admin' : role;
 
@@ -184,8 +206,9 @@ export const dbService = {
         email: emailLower,
         role: finalRole,
         is_premium: shouldBePremium,
-        coupon_applied: shouldBePremium ? "BETA_EARLY_BIRD" : null,
-        created_at: new Date().toISOString()
+        coupon_applied: isInternal ? "INTERNAL_TESTER" : (shouldBePremium ? "BETA_EARLY_BIRD" : null),
+        created_at: new Date().toISOString(),
+        premium_expires_at: isInternal ? null : (shouldBePremium ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString() : null)
       };
 
       profiles[uid] = profile;
@@ -206,7 +229,7 @@ export const dbService = {
       if (!snap.exists()) {
         throw new Error("User profile not found in database.");
       }
-      return snap.data() as UserProfile;
+      return checkPremiumExpiry(snap.data() as UserProfile);
     } else {
       // Mock Storage SignIn
       const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
@@ -217,8 +240,9 @@ export const dbService = {
         throw new Error("User not found in local mock db. Please register first!");
       }
       // In local mock, any password works for testing
-      saveMockData(LOCAL_MOCK_ACTIVE_USER, foundProfile);
-      return foundProfile;
+      const checked = checkPremiumExpiry(foundProfile);
+      saveMockData(LOCAL_MOCK_ACTIVE_USER, checked);
+      return checked;
     }
   },
 
@@ -244,19 +268,22 @@ export const dbService = {
         const snap = await getDoc(userDocRef);
         
         if (snap.exists()) {
-          return snap.data() as UserProfile;
+          return checkPremiumExpiry(snap.data() as UserProfile);
         } else {
           const userCountSnap = await getCountFromServer(collection(firestore, "profiles"));
           const count = userCountSnap.data().count;
-          const isPremium = count < 100;
+          const fbEmail = fbUser.email || "";
+          const isInternal = isInternalTester(fbEmail);
+          const isPremium = isInternal || count < 100;
           
           const newProfile: UserProfile = {
             id: fbUser.uid,
-            email: fbUser.email || "",
+            email: fbEmail,
             role,
             is_premium: isPremium,
-            coupon_applied: isPremium ? "BETA_EARLY_BIRD" : null,
-            created_at: new Date().toISOString()
+            coupon_applied: isInternal ? "INTERNAL_TESTER" : (isPremium ? "BETA_EARLY_BIRD" : null),
+            created_at: new Date().toISOString(),
+            premium_expires_at: isInternal ? null : (isPremium ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString() : null)
           };
           
           await setDoc(userDocRef, newProfile);
@@ -277,8 +304,9 @@ export const dbService = {
       
       if (existingGoogleUserKey) {
         const found = profiles[existingGoogleUserKey];
-        saveMockData(LOCAL_MOCK_ACTIVE_USER, found);
-        return found;
+        const checked = checkPremiumExpiry(found);
+        saveMockData(LOCAL_MOCK_ACTIVE_USER, checked);
+        return checked;
       }
       
       const isPremium = Object.keys(profiles).length < 100;
@@ -289,7 +317,8 @@ export const dbService = {
         role,
         is_premium: isPremium,
         coupon_applied: isPremium ? "BETA_EARLY_BIRD" : null,
-        created_at: new Date().toISOString()
+        created_at: new Date().toISOString(),
+        premium_expires_at: isPremium ? new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString() : null
       };
       
       profiles[mockUid] = mockProfile;
@@ -318,7 +347,12 @@ export const dbService = {
           try {
             const snap = await getDoc(doc(firestore, "profiles", fbUser.uid));
             if (snap.exists()) {
-              callback(snap.data() as UserProfile);
+              const profile = snap.data() as UserProfile;
+              // Run migration + sync in background (non-blocking)
+              migrateLocalStorageToFirestore(firestore).then(() => {
+                syncFromFirestore(firestore, profile.id);
+              });
+              callback(checkPremiumExpiry(profile));
             } else {
               callback(null);
             }
@@ -333,7 +367,7 @@ export const dbService = {
       // Mock triggers immediately with active mock user
       const checkUser = () => {
         const active = getMockData(LOCAL_MOCK_ACTIVE_USER, null);
-        callback(active);
+        callback(active ? checkPremiumExpiry(active) : null);
       };
       
       checkUser();
@@ -446,11 +480,10 @@ export const dbService = {
   
   async saveDocumentSource(profileId: string, docSource: DocumentSource): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      const metadata = { ...docSource, pages: [] }; // Strip heavy payload for Firestore
-      await setDoc(doc(firestore, "profiles", profileId, "documents", docSource.id), metadata);
+      await setDoc(doc(firestore, "profiles", profileId, "documents", docSource.id), docSource);
+      await cacheDocument(docSource);
     } else {
       const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
-      // Remove if exists
       const filtered = docs.filter((d: any) => d.id !== docSource.id);
       filtered.push(docSource);
       saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
@@ -469,7 +502,15 @@ export const dbService = {
       }
     }
     
-    // Merge legacy local documents
+    // Merge IndexedDB docs that aren't in Firestore
+    const cachedDocs = await getCachedDocuments();
+    for (const cd of cachedDocs) {
+      if (!list.find(m => m.id === cd.id)) {
+        list.push(cd);
+      }
+    }
+    
+    // Merge legacy local storage docs
     const localDocs = getMockData(LOCAL_MOCK_DOCUMENTS, []) as DocumentSource[];
     for (const ld of localDocs) {
       if (!list.find(m => m.id === ld.id)) {
@@ -481,7 +522,8 @@ export const dbService = {
 
   async deleteDocumentSource(profileId: string, docId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "profiles", profileId, "documents", docId), {}); // Soft delete
+      await setDoc(doc(firestore, "profiles", profileId, "documents", docId), {});
+      await removeCachedDocument(docId);
     } else {
       const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
       const filtered = docs.filter((d: any) => d.id !== docId);
@@ -504,6 +546,14 @@ export const dbService = {
       }
     }
     
+    // Merge IndexedDB attempts not in Firestore
+    const cachedAttempts = await getCachedAttempts();
+    for (const ca of cachedAttempts) {
+      if (!list.find(m => m.id === ca.id)) {
+        list.push(ca);
+      }
+    }
+    
     // Merge legacy local attempts
     const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
     const localAttempts = allAttempts[profileId] || [];
@@ -517,8 +567,8 @@ export const dbService = {
 
   async saveExamAttempt(profileId: string, attempt: ExamAttempt): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      const metadata = { ...attempt, answers: [] }; // Strip heavy payload for Firestore
-      await setDoc(doc(firestore, "profiles", profileId, "attempts", attempt.id), metadata);
+      await setDoc(doc(firestore, "profiles", profileId, "attempts", attempt.id), attempt);
+      await cacheAttempt(attempt);
     } else {
       const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
       if (!allAttempts[profileId]) {
@@ -531,7 +581,8 @@ export const dbService = {
 
   async deleteExamAttempt(profileId: string, attemptId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "profiles", profileId, "attempts", attemptId), {}); // Soft delete
+      await setDoc(doc(firestore, "profiles", profileId, "attempts", attemptId), {});
+      await removeCachedAttempt(attemptId);
     } else {
       const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
       if (allAttempts[profileId]) {
@@ -562,6 +613,35 @@ export const dbService = {
       }
     }
     return getMockData(LOCAL_MOCK_REVIEWS, []);
+  },
+
+  // -------------------------------------------------------------
+  // Payment / Premium Activation
+  // -------------------------------------------------------------
+  async activatePremium(userId: string, planId: string, expiresAt: string): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      await updateDoc(doc(firestore, "profiles", userId), {
+        is_premium: true,
+        coupon_applied: `razorpay_${planId}`,
+        premium_expires_at: expiresAt,
+      });
+    } else {
+      const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
+      if (profiles[userId]) {
+        profiles[userId].is_premium = true;
+        profiles[userId].coupon_applied = `razorpay_${planId}`;
+        profiles[userId].premium_expires_at = expiresAt;
+        saveMockData(LOCAL_MOCK_PROFILES, profiles);
+
+        const currentActive = getMockData(LOCAL_MOCK_ACTIVE_USER, null);
+        if (currentActive && currentActive.id === userId) {
+          currentActive.is_premium = true;
+          currentActive.coupon_applied = `razorpay_${planId}`;
+          currentActive.premium_expires_at = expiresAt;
+          saveMockData(LOCAL_MOCK_ACTIVE_USER, currentActive);
+        }
+      }
+    }
   },
 
   // -------------------------------------------------------------

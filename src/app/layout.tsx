@@ -13,8 +13,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "Acu - Your Privacy-First Study Companion",
-  description: "Privacy-first AI study assistant that creates summaries, slides, active-recall flashcards, and syllabus-aligned mock exams using your own Gemini key.",
+  title: "Acu - AI Study Companion",
+  description: "AI study assistant that creates summaries, slides, active-recall flashcards, and syllabus-aligned mock exams. Your data is synced to the cloud for access across devices.",
 };
 
 export default function RootLayout({

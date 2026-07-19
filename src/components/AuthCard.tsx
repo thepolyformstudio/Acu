@@ -2,9 +2,9 @@
 
 import React, { useState, useEffect } from "react";
 import { dbService, UserProfile } from "@/lib/db";
-import { Mail, Lock, User, Check, RefreshCw, ExternalLink, KeyRound, Cloud, CloudOff } from "lucide-react";
-import { signInToDrive, isDriveSignedIn } from "@/lib/googleDrive";
-import { validateEmail, validatePassword, validateApiKey } from "@/lib/validation";
+import { Mail, Lock, Check, RefreshCw, Cloud } from "lucide-react";
+import { signInToDrive } from "@/lib/googleDrive";
+import { validateEmail, validatePassword } from "@/lib/validation";
 import { safeError, logError } from "@/lib/errors";
 
 interface AuthCardProps {
@@ -20,15 +20,10 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   const [error, setError] = useState("");
 
   // Onboarding state
-  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showOob, setShowOob] = useState(false);
   const [pendingProfile, setPendingProfile] = useState<UserProfile | null>(null);
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [keySaved, setKeySaved] = useState(false);
-
-  // Drive onboarding step
-  const [showDriveStep, setShowDriveStep] = useState(false);
   const [driveConnecting, setDriveConnecting] = useState(false);
-  const [driveConnected, setDriveConnected] = useState(false);
+  const [driveConnectedNow, setDriveConnectedNow] = useState(false);
 
   // Early bird spots tracking
   const [premiumCount, setPremiumCount] = useState(0);
@@ -38,6 +33,10 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   useEffect(() => {
     dbService.getPremiumUserCount().then(setPremiumCount).catch(console.error);
   }, []);
+
+  const proceedToApp = (profile: UserProfile) => {
+    onSuccess(profile);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,15 +56,8 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
       } else {
         profile = await dbService.signIn(email, password);
       }
-
-      // Check if user already has an API key configured
-      const existingKey = typeof window !== "undefined" ? localStorage.getItem("acu_gemini_api_key") : null;
-      if (existingKey) {
-        onSuccess(profile);
-      } else {
-        setPendingProfile(profile);
-        setShowOnboarding(true);
-      }
+      setPendingProfile(profile);
+      setShowOob(true);
     } catch (err) {
       logError("Auth sign in", err);
       setError(safeError(err, "Authentication failed. Please try again."));
@@ -79,14 +71,8 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
     setLoading(true);
     try {
       const profile = await dbService.signInWithGoogle(role);
-
-      const existingKey = typeof window !== "undefined" ? localStorage.getItem("acu_gemini_api_key") : null;
-      if (existingKey) {
-        onSuccess(profile);
-      } else {
-        setPendingProfile(profile);
-        setShowOnboarding(true);
-      }
+      setPendingProfile(profile);
+      setShowOob(true);
     } catch (err) {
       if (err instanceof Error && err.message !== "__CANCELLED__") {
         logError("Google sign in", err);
@@ -97,39 +83,13 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
     }
   };
 
-  const handleSaveApiKey = () => {
-    const trimmed = apiKeyInput.trim();
-    const keyErr = validateApiKey(trimmed);
-    if (keyErr) { setError(keyErr); return; }
-    setError("");
-    if (typeof window !== "undefined") {
-      localStorage.setItem("acu_gemini_api_key", trimmed);
-    }
-    setKeySaved(true);
-    setTimeout(() => {
-      if (!isDriveSignedIn()) {
-        setShowDriveStep(true);
-      } else {
-        if (pendingProfile) onSuccess(pendingProfile);
-      }
-    }, 800);
-  };
-
-  const handleSkipOnboarding = () => {
-    if (!isDriveSignedIn()) {
-      setShowDriveStep(true);
-    } else {
-      if (pendingProfile) onSuccess(pendingProfile);
-    }
-  };
-
   const handleConnectDrive = async () => {
     setDriveConnecting(true);
     try {
       const ok = await signInToDrive();
-      setDriveConnected(ok);
+      setDriveConnectedNow(ok);
       if (ok && pendingProfile) {
-        setTimeout(() => onSuccess(pendingProfile), 600);
+        setTimeout(() => proceedToApp(pendingProfile), 600);
       }
     } catch {
       // ignore
@@ -139,77 +99,13 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
   };
 
   const handleSkipDrive = () => {
-    if (pendingProfile) onSuccess(pendingProfile);
+    if (pendingProfile) proceedToApp(pendingProfile);
   };
 
   // ---------------------------------------------------------------------------
   // Onboarding Screen
   // ---------------------------------------------------------------------------
-  if (showOnboarding && pendingProfile) {
-    if (showDriveStep) {
-      // Step 2: Google Drive connection
-      return (
-        <div className="w-full max-w-lg glass-panel p-8 rounded-2xl relative overflow-hidden">
-          <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-violet-600/10 blur-3xl pointer-events-none"></div>
-
-          <div className="text-center mb-6 relative">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-semibold uppercase tracking-wider mb-4">
-              <Check size={12} /> Account Created
-            </div>
-            <h2 className="text-2xl font-display font-bold tracking-tight text-white mb-2">
-              Back up your data
-            </h2>
-            <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
-              Connect your Google Drive to securely back up your uploaded files, notes, and exam history.
-              Without it, your data is stored only in your browser and may be lost if you clear your cache.
-            </p>
-          </div>
-
-          {/* Drive connection card */}
-          <div className="mb-6 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center">
-            <Cloud size={48} className="mx-auto text-violet-400 mb-3" />
-            <h3 className="text-sm font-semibold text-white mb-1">Google Drive Backup</h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Your files, notes, and exam history are synced to a private{" "}
-              <code className="text-violet-300 font-mono text-[10px]">Acudex/</code> folder in your Drive.
-            </p>
-
-            <button
-              type="button"
-              onClick={handleConnectDrive}
-              disabled={driveConnecting || driveConnected}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer mb-2"
-            >
-              {driveConnecting ? (
-                <><RefreshCw className="animate-spin" size={16} /> Connecting...</>
-              ) : driveConnected ? (
-                <><Check size={16} /> Connected!</>
-              ) : (
-                <><Cloud size={16} /> Connect Google Drive</>
-              )}
-            </button>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              type="button"
-              onClick={handleSkipDrive}
-              className="flex-1 px-4 py-2.5 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-600 rounded-xl text-sm font-medium transition-colors cursor-pointer"
-            >
-              Skip for now
-            </button>
-          </div>
-
-          <p className="mt-4 text-center text-[10px] text-slate-500 leading-relaxed">
-            You can connect Drive anytime from <span className="text-slate-400">Settings</span>.
-            <br />
-            Your data stays in your browser until you connect.
-          </p>
-        </div>
-      );
-    }
-
-    // Step 1: API key onboarding (existing)
+  if (showOob && pendingProfile) {
     return (
       <div className="w-full max-w-lg glass-panel p-8 rounded-2xl relative overflow-hidden">
         <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-violet-600/10 blur-3xl pointer-events-none"></div>
@@ -219,101 +115,53 @@ export default function AuthCard({ onSuccess }: AuthCardProps) {
             <Check size={12} /> Account Created
           </div>
           <h2 className="text-2xl font-display font-bold tracking-tight text-white mb-2">
-            One last step to enable AI
+            Back up your data
           </h2>
           <p className="text-slate-400 text-sm leading-relaxed max-w-sm mx-auto">
-            Acudex uses Google&apos;s Gemini AI to generate notes, slides, and exams from your textbooks.
-            To enable these features, you need a <span className="text-white font-medium">free</span> API key from Google AI Studio.
+            Connect your Google Drive to securely back up your uploaded files, notes, and exam history.
+            Without it, your data is stored only in your browser and may be lost if you clear your cache.
           </p>
         </div>
 
-        {/* Steps guide */}
-        <div className="mb-6 p-4 rounded-xl border border-slate-800 bg-slate-950/40 space-y-3">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-6 h-6 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center text-[10px] font-bold mt-0.5">1</div>
-            <div>
-              <p className="text-sm text-white font-medium">Click the button below to open Google AI Studio</p>
-              <p className="text-xs text-slate-500 mt-0.5">Sign in with your Google account if prompted</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-6 h-6 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center text-[10px] font-bold mt-0.5">2</div>
-            <div>
-              <p className="text-sm text-white font-medium">Click <span className="text-violet-400">&quot;Create API key&quot;</span></p>
-              <p className="text-xs text-slate-500 mt-0.5">A new key will be generated instantly</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-6 h-6 rounded-full bg-violet-600/20 text-violet-400 flex items-center justify-center text-[10px] font-bold mt-0.5">3</div>
-            <div>
-              <p className="text-sm text-white font-medium">Copy the key and paste it below</p>
-              <p className="text-xs text-slate-500 mt-0.5">It usually starts with <code className="text-violet-300 font-mono text-[10px]">AIzaSy...</code></p>
-            </div>
-          </div>
+        {/* Drive connection card */}
+        <div className="mb-6 p-6 rounded-xl border border-slate-800 bg-slate-950/40 text-center">
+          <Cloud size={48} className="mx-auto text-violet-400 mb-3" />
+          <h3 className="text-sm font-semibold text-white mb-1">Google Drive Backup</h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Your files, notes, and exam history are synced to a private{" "}
+            <code className="text-violet-300 font-mono text-[10px]">Acudex/</code> folder in your Drive.
+          </p>
+
+          <button
+            type="button"
+            onClick={handleConnectDrive}
+            disabled={driveConnecting || driveConnectedNow}
+            className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-emerald-800 disabled:opacity-60 text-white rounded-xl text-sm font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer mb-2"
+          >
+            {driveConnecting ? (
+              <><RefreshCw className="animate-spin" size={16} /> Connecting...</>
+            ) : driveConnectedNow ? (
+              <><Check size={16} /> Connected!</>
+            ) : (
+              <><Cloud size={16} /> Connect Google Drive</>
+            )}
+          </button>
         </div>
 
-        {/* Deep link button */}
-        <a
-          href="https://aistudio.google.com/apikey"
-          target="_blank"
-          rel="noreferrer"
-          className="w-full mb-4 py-3 bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-violet-500/30 text-white rounded-xl text-sm font-medium transition-all cursor-pointer flex items-center justify-center gap-2 group"
-        >
-          <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
-            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-          </svg>
-          Get your free API key
-          <ExternalLink size={14} className="text-slate-500 group-hover:text-violet-400 transition-colors" />
-        </a>
-
-        {/* API key input */}
-        <div className="space-y-1 mb-4">
-          <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-            Paste your API key here
-          </label>
-          <div className="relative">
-            <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              type="password"
-              value={apiKeyInput}
-              onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="AIzaSy..."
-              className="w-full bg-slate-950/50 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white placeholder-slate-600 outline-none transition-colors"
-            />
-          </div>
-        </div>
-
-        {/* Action buttons */}
         <div className="flex gap-3">
           <button
             type="button"
-            onClick={handleSaveApiKey}
-            disabled={!apiKeyInput.trim() || keySaved}
-            className="flex-1 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 disabled:opacity-60 text-white rounded-xl py-2.5 font-medium text-sm transition-colors shadow-lg shadow-violet-600/20 flex items-center justify-center gap-2 cursor-pointer"
-          >
-            {keySaved ? (
-              <><Check size={16} /> Saved!</>
-            ) : (
-              "Save & Continue"
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={handleSkipOnboarding}
-            className="px-4 py-2.5 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-600 rounded-xl text-sm font-medium transition-colors cursor-pointer"
+            onClick={handleSkipDrive}
+            className="flex-1 px-4 py-2.5 bg-transparent hover:bg-slate-900 text-slate-400 hover:text-white border border-slate-800 hover:border-slate-600 rounded-xl text-sm font-medium transition-colors cursor-pointer"
           >
             Skip for now
           </button>
         </div>
 
-        {/* Privacy note */}
         <p className="mt-4 text-center text-[10px] text-slate-500 leading-relaxed">
-          Your key stays in your browser only. It is never sent to our servers.
+          Your data is securely stored in the cloud so you can access it from any device.
           <br />
-          You can add or change it anytime in <span className="text-slate-400">Settings</span>.
+          You can connect Drive anytime from <span className="text-slate-400">Settings</span> for an additional backup.
         </p>
       </div>
     );

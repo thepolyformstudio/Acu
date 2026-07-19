@@ -154,8 +154,30 @@
 | Conversational AI that answers questions based on uploaded textbook content | | | |
 | **PDF chapter splitting** | P1 | Medium | Serverless function for PDF page extraction |
 | Extract individual chapter PDFs from a full textbook upload | | | |
-| **Payment gateway** | P2 | Medium | Razorpay/Stripe integration |
-| Process ₹499 premium payments instead of coupon-only activation | | | |
+| **Pricing page + Early bird promotion** | P1 | Medium | Firestore schema update |
+| 100 free users get 3 months premium, then subscription pricing kicks in | | | |
+| **Subscription engine (UPI-only via Razorpay)** | P1 | Low | Razorpay account, serverless functions |
+| ₹99/mo or ₹499/yr via UPI (0% fee). No cards, no netbanking. Settlements to personal bank account if sole proprietor, or current account if registered business. | | | |
+| **Pricing page + Early bird promotion** (detail) | | | |
+| --- | --- | --- | --- |
+| - Add `premium_expires_at` field to UserProfile in Firestore | | | |
+| - On signup: first 100 users get `is_premium: true` + `premium_expires_at: created_at + 3 months` | | | |
+| - On app mount: check if `premium_expires_at` has passed; if yes, set `is_premium: false` | | | |
+| - Update PricingPage.tsx: show "First 100 users — 3 months free" instead of "forever free" | | | |
+| - After 3 months / 100 slots fill: show actual pricing cards (₹99/mo, ₹499/yr) | | | |
+| - Remove coupon fallback (FREE/ACUBETA) after launch window | | | |
+| **Razorpay UPI integration** (detail) | | | |
+| --- | --- | --- | --- |
+| - Create Razorpay account (PAN + bank account + address proof; test mode works immediately) | | | |
+| - No current account needed for sole proprietors — personal bank account is sufficient. Registered businesses (PVT Ltd, LLP) need a current account. | | | |
+| - Backend: `/api/payments/create-order` serverless function | | | |
+| - Backend: `/api/payments/verify` serverless function (signature verification — critical) | | | |
+| - Frontend: Razorpay Checkout.js modal, restricted to UPI only (`method: { upi: true }`) | | | |
+| - Webhook: `payment.captured` → set `is_premium: true` + `premium_expires_at` in Firestore | | | |
+| - Webhook: `payment.failed` → log + notify user | | | |
+| - Razorpay Subscriptions API for recurring monthly/annual billing | | | |
+| - No cards, no netbanking, no wallets — UPI only. Simpler integration, zero transaction fees. | | | |
+
 | **Mobile app** | P3 | Very High | React Native or Flutter rewrite |
 | Native mobile experience with offline support | | | |
 | **Collaborative study groups** | P2 | High | Firestore real-time listeners, shared documents |

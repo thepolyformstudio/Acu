@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
-import { generateChapterMap, extractChapterTitle, BookMetadata, MOCK_API_KEY } from "@/lib/gemini";
+import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
 import { safeError, logError } from "@/lib/errors";
 import { validateFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
 import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
@@ -325,7 +325,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                   <RefreshCw className="animate-spin text-violet-400" size={16} />
                   <span className="text-xs font-semibold text-violet-300 truncate max-w-[200px]">{statusMessage}</span>
                 </div>
-              ) : (!isDriveSignedIn() && !(typeof window !== "undefined" && localStorage.getItem("acu_gemini_api_key") === MOCK_API_KEY)) ? (
+              ) : (!isDriveSignedIn() && !(typeof window !== "undefined" && localStorage.getItem("acu_ai_mock_mode") === "true")) ? (
                 <div className="group relative">
                   <button disabled className="flex items-center justify-center gap-2 px-5 py-2.5 bg-slate-800 text-slate-500 rounded-xl text-xs font-semibold tracking-wide cursor-not-allowed text-center h-10 w-full sm:w-auto">
                     <Upload size={14} /> Upload Textbook

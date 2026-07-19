@@ -82,7 +82,7 @@ export default function PrivacyPage() {
             "Right to Withdraw Consent: withdraw consent for data processing at any time by deleting your account.",
             "Right to Data Portability: request your data in a structured, machine-readable format.",
           ],
-          note: "To exercise any of these rights, contact us at privacy@acudex.app or through the Settings panel in the app.",
+          note: "To exercise any of these rights, contact us at acudex.connect@gmail.com or through the Settings panel in the app.",
         },
         {
           h: "8. Data Sharing and Third-Party Services",
@@ -112,9 +112,7 @@ export default function PrivacyPage() {
           h: "12. Grievance Officer",
           p: "As required under the IT Act, 2000 and DPDP Act, 2023, we have appointed a Grievance Officer:",
           items: [
-            "Name: [Your Name]",
-            "Email: grievance@acudex.app",
-            "Address: [Your Address]",
+            "Email: acudex.connect@gmail.com",
             "Response time: We acknowledge complaints within 24 hours and resolve them within 30 days as per DPDP Act guidelines.",
           ],
         },
@@ -214,9 +212,7 @@ export default function PrivacyPage() {
           h: "12. शिकायत अधिकारी",
           p: "IT अधिनियम, 2000 और DPDP अधिनियम, 2023 के तहत आवश्यकतानुसार, हमने एक शिकायत अधिकारी नियुक्त किया है:",
           items: [
-            "नाम: [आपका नाम]",
-            "ईमेल: grievance@acudex.app",
-            "पता: [आपका पता]",
+            "ईमेल: acudex.connect@gmail.com",
             "प्रतिक्रिया समय: हम 24 घंटे के भीतर शिकायतें स्वीकार करते हैं और DPDP अधिनियम दिशानिर्देशों के अनुसार 30 दिनों के भीतर उनका समाधान करते हैं।",
           ],
         },
@@ -289,8 +285,8 @@ export default function PrivacyPage() {
           <p>Acu — Privacy-First AI Study Companion</p>
           <p className="mt-1">
             Contact:{" "}
-            <a href="mailto:privacy@acudex.app" className="text-violet-400 hover:text-violet-300">
-              privacy@acudex.app
+            <a href="mailto:acudex.connect@gmail.com" className="text-violet-400 hover:text-violet-300">
+              acudex.connect@gmail.com
             </a>
           </p>
         </div>

@@ -4,7 +4,7 @@
   },
   "hosting": {
     "site": "acudex",
-    "public": ".firebase/acudex/hosting",
+    "public": "dist",
     "ignore": [
       "firebase.json",
       "**/.*",

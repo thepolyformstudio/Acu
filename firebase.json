@@ -4,10 +4,9 @@
   },
   "hosting": {
     "site": "acudex",
-    "public": "dist",
+    "public": "out",
     "ignore": [
       "firebase.json",
-      "**/.*",
       "**/node_modules/**"
     ],
     "rewrites": [

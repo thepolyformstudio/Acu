@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer, deleteDoc } from "firebase/firestore";
 import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt } from "./sync";
 
 export const INTERNAL_TESTER_EMAIL = "ejmultiverse@gmail.com";
@@ -463,7 +463,7 @@ export const dbService = {
 
   async deleteChildProfile(childId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "children", childId), {}); // Delete or overwrite
+      await deleteDoc(doc(firestore, "children", childId));
     } else {
       let children = getMockData(LOCAL_MOCK_CHILDREN, []);
       children = children.filter((c: any) => c.id !== childId);
@@ -496,7 +496,12 @@ export const dbService = {
       try {
         const q = collection(firestore, "profiles", profileId, "documents");
         const snap = await getDocs(q);
-        snap.forEach(d => list.push(d.data() as DocumentSource));
+        snap.forEach(d => {
+          const data = d.data() as DocumentSource;
+          if (data && data.id) {
+            list.push(data);
+          }
+        });
       } catch (err) {
         console.error("Firestore getDocumentSources failed:", err);
       }
@@ -522,7 +527,7 @@ export const dbService = {
 
   async deleteDocumentSource(profileId: string, docId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "profiles", profileId, "documents", docId), {});
+      await deleteDoc(doc(firestore, "profiles", profileId, "documents", docId));
       await removeCachedDocument(docId);
     } else {
       const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
@@ -540,7 +545,12 @@ export const dbService = {
       try {
         const q = collection(firestore, "profiles", profileId, "attempts");
         const snap = await getDocs(q);
-        snap.forEach(d => list.push(d.data() as ExamAttempt));
+        snap.forEach(d => {
+          const data = d.data() as ExamAttempt;
+          if (data && data.id) {
+            list.push(data);
+          }
+        });
       } catch (err) {
         console.error("Firestore getExamAttempts failed:", err);
       }
@@ -581,7 +591,7 @@ export const dbService = {
 
   async deleteExamAttempt(profileId: string, attemptId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "profiles", profileId, "attempts", attemptId), {});
+      await deleteDoc(doc(firestore, "profiles", profileId, "attempts", attemptId));
       await removeCachedAttempt(attemptId);
     } else {
       const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});

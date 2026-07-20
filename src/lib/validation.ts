@@ -3,6 +3,8 @@ const API_KEY_PREFIX = "AIzaSy";
 const COUPON_REGEX = /^[A-Za-z0-9_-]{3,30}$/;
 const SAFE_TEXT_REGEX = /^[a-zA-Z0-9\s.,!?'"()\-:;/@#$%&*+=_{}\[\]<>]+$/;
 
+const IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "webp"] as const;
+
 const LIMITS = {
   emailMaxLength: 254,
   passwordMinLength: 6,
@@ -13,10 +15,14 @@ const LIMITS = {
   customSubjectMaxLength: 100,
   feedbackMaxLength: 2000,
   maxFileSizeMB: 50,
+  maxImageSizeMB: 10,
   allowedMimeTypes: [
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/webp",
   ] as readonly string[],
 } as const;
 
@@ -76,8 +82,20 @@ export function validateFile(file: File): string | null {
     if (file.name.endsWith(".pdf") && file.type === "") return null;
     if (file.name.endsWith(".docx") && file.type === "") return null;
     if (file.name.endsWith(".txt") && file.type === "") return null;
-    return `File type '${file.type || "unknown"}' is not supported. Allowed: PDF, DOCX, TXT.`;
+    // Allow image extensions with empty MIME (some OS/browser combos omit it)
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if ((IMAGE_EXTENSIONS as readonly string[]).includes(ext) && file.type === "") return null;
+    return `File type '${file.type || "unknown"}' is not supported. Allowed: PDF, DOCX, TXT, PNG, JPG, WEBP.`;
   }
+  return null;
+}
+
+/** Stricter validation for image files — enforces the 10 MB per-image cap. */
+export function validateImageFile(file: File): string | null {
+  const baseErr = validateFile(file);
+  if (baseErr) return baseErr;
+  if (file.size > LIMITS.maxImageSizeMB * 1024 * 1024)
+    return `Image files must be under ${LIMITS.maxImageSizeMB}MB. Resize the image and try again.`;
   return null;
 }
 

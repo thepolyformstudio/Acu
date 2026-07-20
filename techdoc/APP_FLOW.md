@@ -85,6 +85,16 @@ Landing Page
 ```
 Sign Up / Sign In Success
 │
+├── [First Login] Workflow Onboarding Modal (OnboardingModal.tsx)
+│   ├── Triggered once per user (localStorage key: acu_onboarding_seen_{userId})
+│   ├── Not shown to admin accounts
+│   ├── 4-step workflow guide cards (Library → Slides → Exam → Dash)
+│   │   └── Each card is clickable with colour-coded glow on active
+│   ├── Mobile: dot-based step indicator
+│   ├── "Don't show again" → sets localStorage flag + closes
+│   ├── "Got it, let's start →" → closes modal (shows again next session)
+│   └── ✕ button → closes modal (shows again next session)
+│
 ├── Step 1: API Key Onboarding
 │   ├── Explanation: "One last step to enable AI"
 │   ├── 3-step guide with numbered circles
@@ -172,30 +182,37 @@ Library
 │   └── Upload Button
 │       ├── [Free tier > 2 docs] → disabled with upgrade CTA
 │       ├── [No Drive] → warning tooltip
-│       └── [Ready] → file picker (.pdf/.docx/.txt, max 50MB)
+│       └── [Ready] → file picker (.pdf/.docx/.txt/.png/.jpg/.jpeg/.webp)
+│           ├── Documents: max 50 MB each
+│           └── Images: max 10 MB each (OCR'd by Gemini Vision)
 │
 ├── [Files Selected] Staging Modal
 │   ├── File list with editable titles
-│   ├── [Single Chapter] → title input per file
+│   ├── [Single Chapter, non-image] → saves directly (no mapping modal)
 │   ├── [Full Textbook] → "Manual mapping required" notice
+│   ├── [Any Image] → always goes through manual chapter mapping
 │   ├── Cancel button
 │   └── "Process & Extract" button
+│       └── Images: shows status "Reading image with Gemini Vision OCR..."
 │
-├── [Full Textbook] Manual Mapping Modal
+├── [Full Textbook / Image] Manual Mapping Modal
 │   ├── Chapter rows (name, start page, end page inputs)
 │   ├── "Add Another Chapter" button
 │   ├── Cancel button
 │   └── "Save Document" button
 │
 ├── Upload Progress
-│   ├── Spinner + status message ("Extracting text...", "Indexing...")
+│   ├── Spinner + status message ("Extracting text...", "Indexing...",
+│   │                             "Reading image with Gemini Vision OCR...")
 │   └── Success message → auto-refresh
 │
 └── Indexed Syllabus Library
     ├── Free tier warning (X of 2 slots used)
     └── Collapsible Subject Groups
         ├── Subject header (file count, chapter count)
-        ├── File list with delete button
+        ├── 🗑️ Delete Subject button → cascade-deletes all docs in group
+        │   └── Confirmation dialog shows file + chapter count
+        ├── File list with per-file delete button
         └── Chapter list (name, page range, source document)
 ```
 
@@ -275,8 +292,11 @@ Exams Workspace
 │   │   └── Government → UPSC, SSC, Bank PO, NDA
 │   │
 │   ├── Grade Level dropdown (auto-filtered by blueprint)
-│   ├── Subject + Chapter dropdowns
-│   ├── [Custom Chapter Override] text field
+│   ├── Subject dropdown
+│   ├── Chapter Selection (checkbox list)
+│   │   ├── "Select Entire Subject" checkbox → selects all chapters
+│   │   ├── Individual chapter checkboxes
+│   │   └── [Custom Chapter Override] text field (clears checkbox selection)
 │   ├── Total Marks / Duration (auto-filled from blueprint)
 │   ├── Blueprint Preview Card
 │   │   ├── Section structure (A/B/C/D)
@@ -284,6 +304,7 @@ Exams Workspace
 │   │   ├── Competency-based % (if applicable)
 │   │   └── Negative marking indicator
 │   └── "Generate Exam" button
+│       └── Aggregates text from all selected chapters/documents
 │
 ├── [Paused Session Detected]
 │   ├── Resume exam (load from localStorage)

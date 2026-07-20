@@ -114,6 +114,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ text, provider: "gemini" });
     } catch (geminiErr) {
       if (isRateLimitError(geminiErr)) {
+        // If the request contains image (inlineData) parts, Groq cannot handle it
+        const hasImageParts = body.contents.some((part: any) => !!part.inlineData);
+        if (hasImageParts) {
+          return NextResponse.json(
+            { error: "Image OCR requires Gemini and is unavailable right now due to rate limits. Please try again shortly." },
+            { status: 429 }
+          );
+        }
         console.log("[AI Proxy] Gemini rate-limited, falling back to Groq");
         try {
           const text = await tryGroq(body);

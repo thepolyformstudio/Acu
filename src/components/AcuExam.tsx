@@ -91,7 +91,8 @@ export default function AcuExam({
   documents, attempts, activeProfileId, onRefresh, user 
 }: AcuExamProps) {
   const [selectedSubject, setSelectedSubject] = useState("");
-  const [selectedChapterKey, setSelectedChapterKey] = useState("");
+  const [selectedChapterKeys, setSelectedChapterKeys] = useState<string[]>([]);
+  const [selectAllChapters, setSelectAllChapters] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
@@ -213,70 +214,135 @@ export default function AcuExam({
   }, [examRunning, secondsRemaining]);
 
   const handleGenerateExam = async () => {
-    // Find the selected chapter and its parent document
-    const chap = flatChapters.find(c => `${c.docId}_${c.chapIdx}` === selectedChapterKey);
-    if (!chap) {
-      alert("Please select a subject and chapter.");
-      return;
-    }
-    let selectedDoc = documents.find(d => d.id === chap.docId);
-    if (!selectedDoc) return;
-    
-    // If doc metadata is loaded but pages payload is empty, fetch from Drive
-    if (!selectedDoc.pages || selectedDoc.pages.length === 0) {
-      setLoading(true);
-      setLoadingMessage("Fetching document payload from Google Drive...");
-      const fullDoc = await loadSingleDocumentFromDrive(selectedDoc.id);
-      if (fullDoc) {
-        selectedDoc = { ...selectedDoc, pages: fullDoc.pages };
-      } else {
-        alert("Could not load document payload from Google Drive. Please ensure it is synced.");
-        setLoading(false);
-        setLoadingMessage("");
+    // ── Manual override path (custom page range) ──────────────────────────────
+    if (manualChapterOverride) {
+      // For manual override we still need exactly one document selected via subject
+      const subjectDocs = documents.filter(d => (d.subject || "General") === selectedSubject);
+      if (subjectDocs.length === 0) {
+        alert("Please select a subject first.");
         return;
       }
-    }
-    
-    let chapName = "";
-    let startP = 1;
-    let endP = selectedDoc.pages.length;
-
-    if (manualChapterOverride) {
       if (!customChapterName.trim()) {
         alert("Please enter a custom Chapter / Topic name.");
         return;
       }
-      chapName = customChapterName.trim();
-      startP = Math.max(1, customStartPage);
-      endP = Math.min(selectedDoc.pages.length, customEndPage);
+      const startP = Math.max(1, customStartPage);
+      let selectedDoc = subjectDocs[0];
+      if (!selectedDoc.pages || selectedDoc.pages.length === 0) {
+        setLoading(true);
+        setLoadingMessage("Fetching document payload from Google Drive...");
+        const fullDoc = await loadSingleDocumentFromDrive(selectedDoc.id);
+        if (fullDoc) {
+          selectedDoc = { ...selectedDoc, pages: fullDoc.pages };
+        } else {
+          alert("Could not load document payload from Google Drive. Please ensure it is synced.");
+          setLoading(false);
+          setLoadingMessage("");
+          return;
+        }
+      }
+      const endP = Math.min(selectedDoc.pages.length, customEndPage);
       if (startP > endP) {
         alert("Start page cannot be greater than end page.");
         return;
       }
-    } else {
-      chapName = chap.name;
-      startP = chap.startPage;
-      endP = chap.endPage;
+
+      setLoading(true);
+      setLoadingMessage("Gemini is reading textbook text...");
+      try {
+        const textSlices = selectedDoc.pages
+          .filter(p => p.pageNumber >= startP && p.pageNumber <= endP)
+          .map(p => p.text)
+          .join("\n\n");
+        if (textSlices.trim().length === 0) throw new Error("No readable text content in the selected page range.");
+        setLoadingMessage("Creating board blueprint paper questions...");
+        const docSubject = selectedDoc.subject || "General";
+        const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks, docSubject, activeBlueprint);
+        let questionIndex = 1;
+        examPaper.sections.forEach((sec: any) => { sec.questions.forEach((q: any) => { q.id = `q_${questionIndex}`; questionIndex++; }); });
+        examPaper.title = examTitle;
+        examPaper.maxMarks = totalMarks;
+        examPaper.durationMinutes = durationMinutes;
+        examPaper.subject = docSubject;
+        examPaper.documentId = selectedDoc.id;
+        examPaper.chapterName = customChapterName.trim();
+        setActiveExam(examPaper);
+        setStudentAnswers({});
+        setSecondsRemaining(durationMinutes * 60);
+        setExamRunning(true);
+        setScorecard(null);
+      } catch (err: any) {
+        alert("Generation failed: " + (err.message || String(err)));
+      } finally {
+        setLoading(false);
+        setLoadingMessage("");
+      }
+      return;
+    }
+
+    // ── Normal multi-chapter path ─────────────────────────────────────────────
+    const chaptersToUse = selectAllChapters
+      ? flatChapters
+      : flatChapters.filter(c => selectedChapterKeys.includes(`${c.docId}_${c.chapIdx}`));
+
+    if (chaptersToUse.length === 0) {
+      alert("Please select at least one chapter, or enable \"Entire Subject\".");
+      return;
     }
 
     setLoading(true);
-    setLoadingMessage("Gemini is reading textbook text...");
+    setLoadingMessage("Fetching document payloads...");
 
     try {
-      const textSlices = selectedDoc.pages
-        .filter(p => p.pageNumber >= startP && p.pageNumber <= endP)
-        .map(p => p.text)
-        .join("\n\n");
+      // Group selected chapters by document so we only fetch each doc once
+      const docIdSet = [...new Set(chaptersToUse.map(c => c.docId))];
+      const resolvedDocs: Record<string, DocumentSource> = {};
 
-      if (textSlices.trim().length === 0) {
-        throw new Error("No readable text content in the selected page range.");
+      for (const docId of docIdSet) {
+        let doc = documents.find(d => d.id === docId);
+        if (!doc) continue;
+        if (!doc.pages || doc.pages.length === 0) {
+          setLoadingMessage(`Fetching "${doc.name}" from Google Drive...`);
+          const fullDoc = await loadSingleDocumentFromDrive(docId);
+          if (fullDoc) {
+            doc = { ...doc, pages: fullDoc.pages };
+          } else {
+            throw new Error(`Could not load document "${doc.name}" from Google Drive. Please ensure it is synced.`);
+          }
+        }
+        resolvedDocs[docId] = doc;
       }
 
+      setLoadingMessage("Gemini is reading textbook text...");
+
+      // Collect text slices for every selected chapter in reading order
+      const allTextParts: string[] = [];
+      for (const chap of chaptersToUse) {
+        const doc = resolvedDocs[chap.docId];
+        if (!doc) continue;
+        const slice = doc.pages
+          .filter(p => p.pageNumber >= chap.startPage && p.pageNumber <= chap.endPage)
+          .map(p => p.text)
+          .join("\n\n");
+        if (slice.trim()) allTextParts.push(`=== ${chap.name} ===\n${slice}`);
+      }
+
+      const textSlices = allTextParts.join("\n\n");
+      if (textSlices.trim().length === 0) {
+        throw new Error("No readable text content found in the selected chapters.");
+      }
+
+      // Derive a human-readable chapter label
+      const chapLabel = selectAllChapters
+        ? `Entire Subject — ${selectedSubject}`
+        : chaptersToUse.length === 1
+          ? chaptersToUse[0].name
+          : `${chaptersToUse.length} Chapters (${chaptersToUse.map(c => c.name).join(", ")})`;
+
       setLoadingMessage("Creating board blueprint paper questions...");
-      const docSubject = selectedDoc.subject || "General";
+      const docSubject = selectedSubject || "General";
       const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks, docSubject, activeBlueprint);
-      
-      // Assign unique local IDs to generated questions for student answering
+
       let questionIndex = 1;
       examPaper.sections.forEach((sec: any) => {
         sec.questions.forEach((q: any) => {
@@ -285,13 +351,12 @@ export default function AcuExam({
         });
       });
 
-      // Inject subject and chapter metadata
       examPaper.title = examTitle;
       examPaper.maxMarks = totalMarks;
       examPaper.durationMinutes = durationMinutes;
-      examPaper.subject = selectedDoc.subject || "General";
-      examPaper.documentId = selectedDoc.id;
-      examPaper.chapterName = chapName;
+      examPaper.subject = docSubject;
+      examPaper.documentId = chaptersToUse[0].docId;
+      examPaper.chapterName = chapLabel;
 
       setActiveExam(examPaper);
       setStudentAnswers({});
@@ -634,7 +699,8 @@ export default function AcuExam({
         studentAnswerImages,
         secondsRemaining,
         selectedSubject,
-        selectedChapterKey,
+        selectedChapterKeys,
+        selectAllChapters,
         examTitle,
         classGrade,
         totalQuestions,
@@ -655,7 +721,8 @@ export default function AcuExam({
 
     setExamTitle(pausedSession.examTitle);
     setSelectedSubject(pausedSession.selectedSubject);
-    setSelectedChapterKey(pausedSession.selectedChapterKey);
+    setSelectedChapterKeys(pausedSession.selectedChapterKeys ?? []);
+    setSelectAllChapters(pausedSession.selectAllChapters ?? false);
     setClassGrade(pausedSession.classGrade);
     setTotalQuestions(pausedSession.totalQuestions);
     setTotalMarks(pausedSession.totalMarks);
@@ -750,7 +817,8 @@ export default function AcuExam({
                     value={selectedSubject}
                     onChange={(e) => {
                       setSelectedSubject(e.target.value);
-                      setSelectedChapterKey("");
+                      setSelectedChapterKeys([]);
+                      setSelectAllChapters(false);
                     }}
                     className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
                   >
@@ -765,24 +833,68 @@ export default function AcuExam({
                 </div>
 
                 {!manualChapterOverride ? (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapter</label>
-                    <select
-                      disabled={!selectedSubject}
-                      value={selectedChapterKey}
-                      onChange={(e) => setSelectedChapterKey(e.target.value)}
-                      className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer disabled:opacity-50"
-                    >
-                      <option value="">-- Choose chapter --</option>
-                      {flatChapters.map((c) => (
-                        <option key={`${c.docId}_${c.chapIdx}`} value={`${c.docId}_${c.chapIdx}`}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                    {selectedChapterKey && (
-                      <p className="text-[10px] text-slate-600 mt-0.5">
-                        Source: {flatChapters.find(c => `${c.docId}_${c.chapIdx}` === selectedChapterKey)?.docName}
+                  <div className="space-y-1 col-span-full md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapters</label>
+                      {selectedSubject && flatChapters.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !selectAllChapters;
+                            setSelectAllChapters(next);
+                            setSelectedChapterKeys(next ? flatChapters.map(c => `${c.docId}_${c.chapIdx}`) : []);
+                          }}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                            selectAllChapters
+                              ? "bg-violet-600 text-white"
+                              : "border border-slate-700 text-slate-400 hover:border-violet-500 hover:text-violet-400"
+                          }`}
+                        >
+                          {selectAllChapters ? "✓ Entire Subject" : "Select Entire Subject"}
+                        </button>
+                      )}
+                    </div>
+
+                    {!selectedSubject ? (
+                      <p className="text-[10px] text-slate-600 py-2">Select a subject first.</p>
+                    ) : flatChapters.length === 0 ? (
+                      <p className="text-[10px] text-slate-600 py-2">No chapters found for this subject.</p>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto pr-1 space-y-1 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
+                        {flatChapters.map((c) => {
+                          const key = `${c.docId}_${c.chapIdx}`;
+                          const checked = selectedChapterKeys.includes(key);
+                          return (
+                            <label
+                              key={key}
+                              className={`flex items-start gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                                checked ? "bg-violet-900/30 border border-violet-700/40" : "hover:bg-slate-900/60 border border-transparent"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  setSelectAllChapters(false);
+                                  setSelectedChapterKeys(prev =>
+                                    checked ? prev.filter(k => k !== key) : [...prev, key]
+                                  );
+                                }}
+                                className="accent-violet-500 mt-0.5 shrink-0 cursor-pointer"
+                              />
+                              <span className="text-xs text-slate-300 leading-tight">
+                                {c.name}
+                                <span className="block text-[10px] text-slate-600">{c.docName} · pp. {c.startPage}–{c.endPage}</span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {selectedChapterKeys.length > 0 && (
+                      <p className="text-[10px] text-violet-400 mt-0.5">
+                        {selectAllChapters ? "All chapters selected" : `${selectedChapterKeys.length} chapter${selectedChapterKeys.length > 1 ? "s" : ""} selected`}
                       </p>
                     )}
                   </div>
@@ -985,7 +1097,10 @@ export default function AcuExam({
               {/* Confirm trigger */}
               <button
                 onClick={handleGenerateExam}
-                disabled={!selectedSubject || (!manualChapterOverride && !selectedChapterKey)}
+                disabled={
+                  !selectedSubject ||
+                  (!manualChapterOverride && !selectAllChapters && selectedChapterKeys.length === 0)
+                }
                 className="px-6 py-3 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white rounded-xl text-xs font-bold tracking-wide transition-colors cursor-pointer flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
               >
                 <Play size={14} /> Generate and Start Exam

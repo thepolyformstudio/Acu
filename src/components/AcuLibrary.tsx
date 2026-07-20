@@ -4,9 +4,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
+import { extractTextFromImage } from "@/lib/imageOcrParser";
 import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
 import { safeError, logError } from "@/lib/errors";
-import { validateFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
+import { validateFile, validateImageFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
 import {
   saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn,
   onDriveSyncStatusChange, getDriveSyncStatus, DriveSyncStatus
@@ -101,7 +102,9 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     }
 
     for (const f of Array.from(files)) {
-      const fileErr = validateFile(f);
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      const isImage = ["png", "jpg", "jpeg", "webp"].includes(ext);
+      const fileErr = isImage ? validateImageFile(f) : validateFile(f);
       if (fileErr) {
         alert(`Invalid file "${f.name}": ${fileErr}`);
         e.target.value = '';
@@ -128,6 +131,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
         let pages: { pageNumber: number; text: string }[] = [];
         const extension = file.name.split('.').pop()?.toLowerCase();
+        const isImageFile = ["png", "jpg", "jpeg", "webp"].includes(extension ?? "");
 
         if (extension === "pdf") {
           pages = await extractTextPageByPage(file);
@@ -136,8 +140,11 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
         } else if (extension === "txt") {
           const text = await file.text();
           pages = [{ pageNumber: 1, text }];
+        } else if (isImageFile) {
+          setStatusMessage(`[File ${fIdx + 1}/${files.length}] Reading image with Gemini Vision OCR...`);
+          pages = await extractTextFromImage(file, 1);
         } else {
-          throw new Error(`Unsupported file format for ${file.name}. Please upload PDF, Docx, or Txt files.`);
+          throw new Error(`Unsupported file format for ${file.name}. Please upload PDF, DOCX, TXT, PNG, JPG, or WEBP files.`);
         }
 
         if (pages.length === 0 || pages.every(p => !p.text)) {
@@ -148,7 +155,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
         let chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] = [];
 
-        if (uploadMode === "single_chapter") {
+        if (uploadMode === "single_chapter" && !isImageFile) {
           chapterMap = [{
             name: stagedItem.title,
             summary: "Chapter content.",
@@ -156,6 +163,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             endPage: pages.length
           }];
         } else {
+          // full_textbook mode, or any image — always go through manual chapter mapping
           setManualMappingQueue({ file, pages });
           setUploading(false);
           setStatusMessage("");
@@ -244,6 +252,17 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     }
   };
 
+  const handleDeleteSubject = async (subject: string, docs: DocumentSource[]) => {
+    if (!confirm(`Delete the entire "${subject}" subject?\n\nThis will permanently remove all ${docs.length} file(s) and ${docs.reduce((a, d) => a + (d.chapterMap?.length || 0), 0)} chapter(s) from your library. This cannot be undone.`)) return;
+    for (const doc of docs) {
+      await dbService.deleteDocumentSource(user?.id || "anonymous", doc.id);
+      if (isDriveSignedIn()) {
+        deleteDocumentFromDrive(doc.id).catch((err) => logError("Drive delete (subject)", err));
+      }
+    }
+    onRefresh();
+  };
+
   // Group documents by their subject
   const groupedDocs: { [subject: string]: DocumentSource[] } = {};
   documents.forEach((doc) => {
@@ -300,6 +319,9 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
               )}
             </div>
             <p className="text-slate-400 text-sm">Upload and manage textbook chapters, lecture transcripts, and study notes.</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">
+              Supported: PDF, DOCX, TXT, PNG, JPG, WEBP &mdash; Images are OCR'd by Gemini Vision and stored as text pages.
+            </p>
           </div>
 
           {/* Dynamic Subject & Upload Configuration Panel */}
@@ -386,11 +408,11 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                 </div>
               ) : (
                 <label className="flex items-center justify-center gap-2 px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold tracking-wide transition-colors cursor-pointer text-center shadow-lg shadow-violet-600/10 h-10 w-full sm:w-auto">
-                  <Upload size={14} /> Upload Textbook
+                  <Upload size={14} /> Upload
                   <input 
                     type="file" 
                     className="hidden" 
-                    accept=".pdf,.docx,.txt" 
+                    accept=".pdf,.docx,.txt,.png,.jpg,.jpeg,.webp" 
                     multiple 
                     onChange={handleFileSelect} 
                   />
@@ -449,8 +471,17 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                         {docs.length} File(s) • {totalChaps} Chapters Mapped
                       </span>
                     </div>
-                    <div className="text-slate-500">
-                      {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSubject(subject, docs); }}
+                        title={`Delete all ${docs.length} file(s) in "${subject}"`}
+                        className="p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                      <div className="text-slate-500">
+                        {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                      </div>
                     </div>
                   </div>
 

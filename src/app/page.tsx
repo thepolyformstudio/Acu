@@ -19,6 +19,7 @@ import AcuCard from "@/components/AcuCard";
 import PricingPage from "@/components/PricingPage";
 import AcuFeedback from "@/components/AcuFeedback";
 import AcuAdmin from "@/components/AcuAdmin";
+import OnboardingModal from "@/components/OnboardingModal";
 
 export default function Home() {
   const [activeUser, setActiveUser] = useState<UserProfile | null>(null);
@@ -31,6 +32,7 @@ export default function Home() {
   const [attempts, setAttempts] = useState<ExamAttempt[]>([]);
   const [activeProfileId, setActiveProfileId] = useState<string>("");
   const [showPricing, setShowPricing] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   useEffect(() => {
     // Listen to authentication changes
@@ -40,6 +42,10 @@ export default function Home() {
         setActiveProfileId(user.id);
         if (user.role === 'admin') {
           setActiveTab("admin");
+        } else {
+          // Show onboarding once per user (not for admins)
+          const seen = localStorage.getItem(`acu_onboarding_seen_${user.id}`);
+          if (!seen) setShowOnboarding(true);
         }
       }
       setLoading(false);
@@ -258,6 +264,13 @@ export default function Home() {
   // -------------------------------------------------------------
   return (
     <div className="min-h-screen bg-[#0b0c10] flex flex-col justify-between text-slate-100 relative">
+      {/* Onboarding modal — shown once on first login */}
+      {showOnboarding && (
+        <OnboardingModal
+          userId={activeUser.id}
+          onClose={() => setShowOnboarding(false)}
+        />
+      )}
       {/* Background glow highlights */}
       <div className="absolute top-0 right-1/4 w-[400px] h-[400px] bg-glow-violet blur-[150px] pointer-events-none"></div>
       <div className="absolute bottom-0 left-1/4 w-[400px] h-[400px] bg-glow-emerald blur-[150px] pointer-events-none"></div>

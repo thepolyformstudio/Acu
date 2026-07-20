@@ -53,6 +53,7 @@
 | Charts | Recharts | ^3.9 | Bloom's taxonomy radar chart |
 | PDF Parsing | pdfjs-dist | (runtime) | Client-side PDF text extraction |
 | DOCX Parsing | mammoth | ^1.12 | Client-side DOCX text extraction |
+| Image OCR | Gemini Vision API | (via /api/ai/generate) | Server-side OCR for PNG/JPG/WEBP uploads |
 | PPTX Export | pptxgenjs | ^4.0 | Slide-to-PowerPoint export |
 | Confetti | canvas-confetti | ^1.9 | Exam pass celebration |
 | AI SDK | @google/generative-ai | ^0.24 | Gemini API access |
@@ -100,15 +101,23 @@ User → AuthCard → validateInputs()
 
 ### 4.2 Document Upload & Chapter Mapping
 ```
-User selects files
-  → validateFile() (MIME, size, extension check)
+User selects files (.pdf / .docx / .txt / .png / .jpg / .jpeg / .webp)
+  → validateFile() or validateImageFile() (MIME, size, extension check)
+       └→ Images: 10 MB cap enforced; Documents: 50 MB cap
   → Show staging modal (edit titles, choose mode)
   → For each file:
-    → extract pages via pdfjs-dist / mammoth / file.text()
-    → If full_textbook mode:
+    → PDF: extract pages via pdfjs-dist (text-only)
+    → DOCX: extract text via mammoth
+    → TXT: file.text()
+    → Image (PNG/JPG/WEBP):
+        → Convert to base64 (fileToBase64)
+        → POST to /api/ai/generate with inlineData part + IMAGE_OCR_SYSTEM_PROMPT
+        → Gemini Vision extracts text; Groq fallback is BLOCKED for image requests
+        → Returns { pageNumber: 1, text: extractedText }
+    → If full_textbook mode OR any image:
         → Show manual chapter mapping modal
         → User enters chapters + page ranges
-    → If single_chapter mode:
+    → If single_chapter mode (non-image):
         → AI extractChapterTitle() or user-entered title
     → saveDocumentSource() to Firestore + localStorage
     → Optionally backup to Google Drive
@@ -176,6 +185,7 @@ Grading:
 ```
 src/
 ├── app/                          # Next.js App Router pages
+│   ├── api/ai/generate/route.ts  # Gemini/Groq proxy (inlineData guard added)
 │   ├── globals.css               # Tailwind + custom styles
 │   ├── layout.tsx                # Root layout (fonts, metadata)
 │   ├── page.tsx                  # Main SPA (landing + app shell)
@@ -185,11 +195,12 @@ src/
 │   ├── AcuAdmin.tsx              # Admin dashboard
 │   ├── AcuCard.tsx               # 3D flashcard viewer
 │   ├── AcuDash.tsx               # Student dashboard
-│   ├── AcuExam.tsx               # Exam generator + grader
+│   ├── AcuExam.tsx               # Exam generator + grader (multi-chapter select)
 │   ├── AcuFeedback.tsx           # Review submission
-│   ├── AcuLibrary.tsx            # Document upload & library
+│   ├── AcuLibrary.tsx            # Document upload & library (image + subject delete)
 │   ├── AcuSlide.tsx              # Study materials workspace
 │   ├── AuthCard.tsx              # Auth + onboarding
+│   ├── OnboardingModal.tsx       # First-login workflow guide popup [NEW]
 │   ├── PricingPage.tsx           # Pricing & coupon redemption
 │   └── SettingsPanel.tsx         # API key & Drive settings
 └── lib/
@@ -197,8 +208,9 @@ src/
     ├── db.ts                     # Firebase + mock database service
     ├── docxParser.ts             # DOCX text extraction
     ├── errors.ts                 # Safe error handling utilities
-    ├── gemini.ts                 # Gemini AI integration
+    ├── gemini.ts                 # Gemini AI integration (IMAGE_OCR_SYSTEM_PROMPT added)
     ├── googleDrive.ts            # Google Drive backup
+    ├── imageOcrParser.ts         # Image → Gemini Vision OCR → text pages [NEW]
     ├── pdfParser.ts              # PDF text extraction
-    └── validation.ts             # Input validation utilities
+    └── validation.ts             # Input validation (image types + validateImageFile added)
 ```

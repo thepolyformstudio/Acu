@@ -1,0 +1,7 @@
+file 'demo-screenshots\seg-01.wav'
+file 'demo-screenshots\seg-02.wav'
+file 'demo-screenshots\seg-03.wav'
+file 'demo-screenshots\seg-04.wav'
+file 'demo-screenshots\seg-05.wav'
+file 'demo-screenshots\seg-06.wav'
+file 'demo-screenshots\seg-07.wav'

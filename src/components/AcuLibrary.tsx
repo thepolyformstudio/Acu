@@ -1,17 +1,21 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
 import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
 import { safeError, logError } from "@/lib/errors";
 import { validateFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
-import { saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import {
+  saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn,
+  onDriveSyncStatusChange, getDriveSyncStatus, DriveSyncStatus
+} from "@/lib/googleDrive";
 import { 
-  Upload, FileText, Trash2, FolderOpen, Calendar, 
-  Layers, RefreshCw, BookOpen, ShieldAlert,
-  ChevronRight, ChevronDown, Plus, X
+  Upload, FileText, Trash2, FolderOpen,
+  RefreshCw, BookOpen, ShieldAlert,
+  ChevronRight, ChevronDown, Plus, X,
+  Cloud, CloudOff, CheckCircle, AlertTriangle, WifiOff
 } from "lucide-react";
 
 interface AcuLibraryProps {
@@ -43,8 +47,24 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const [customSubjectText, setCustomSubjectText] = useState("");
   const activeSubject = selectedSubjectType === "Custom" ? customSubjectText : selectedSubjectType;
 
-  // Collapsible subjects state (default collapsed: empty state means all collapsed)
+  // Collapsible subjects state
   const [expandedSubjects, setExpandedSubjects] = useState<{ [subject: string]: boolean }>({});
+
+  // Drive sync status (real-time from googleDrive listener)
+  const [driveStatus, setDriveStatus] = useState<DriveSyncStatus>(getDriveSyncStatus());
+
+  // Track which doc IDs have been successfully synced to Drive in this session.
+  // Fast approach: docs uploaded before Drive was connected start as "unsynced".
+  // Docs uploaded after connection (or manually synced) are added to this set.
+  const [syncedDocIds, setSyncedDocIds] = useState<Set<string>>(() => new Set());
+  const [syncingDocIds, setSyncingDocIds] = useState<Set<string>>(() => new Set());
+  const [failedDocIds, setFailedDocIds] = useState<Set<string>>(() => new Set());
+
+  // Subscribe to Drive sync status changes
+  useEffect(() => {
+    const unsub = onDriveSyncStatusChange((s) => setDriveStatus(s));
+    return unsub;
+  }, []);
 
   const toggleSubject = (subject: string) => {
     setExpandedSubjects((prev) => ({
@@ -52,6 +72,23 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       [subject]: !prev[subject],
     }));
   };
+
+  // Utility: save a single doc to Drive and track sync state
+  const syncDocToDrive = useCallback(async (doc: DocumentSource) => {
+    if (!isDriveSignedIn()) return;
+    setSyncingDocIds((prev) => new Set(prev).add(doc.id));
+    setFailedDocIds((prev) => { const n = new Set(prev); n.delete(doc.id); return n; });
+    try {
+      await saveDocumentToDrive(doc);
+      setSyncedDocIds((prev) => new Set(prev).add(doc.id));
+      setFailedDocIds((prev) => { const n = new Set(prev); n.delete(doc.id); return n; });
+    } catch (err) {
+      logError("Drive sync (doc)", err);
+      setFailedDocIds((prev) => new Set(prev).add(doc.id));
+    } finally {
+      setSyncingDocIds((prev) => { const n = new Set(prev); n.delete(doc.id); return n; });
+    }
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -136,7 +173,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
         await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
         if (isDriveSignedIn()) {
-          saveDocumentToDrive(newDoc).catch((err) => logError("Drive backup", err));
+          syncDocToDrive(newDoc);
         }
       }
 
@@ -185,7 +222,7 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
     await dbService.saveDocumentSource(user?.id || "anonymous", newDoc);
     if (isDriveSignedIn()) {
-      saveDocumentToDrive(newDoc).catch((err) => logError("Drive backup (manual mapping)", err));
+      syncDocToDrive(newDoc);
     }
 
     setManualMappingQueue(null);
@@ -216,37 +253,50 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     }
     groupedDocs[subj].push(doc);
   });
+  // Helper: human-readable relative time
+  const relativeTime = (iso: string | null): string => {
+    if (!iso) return "";
+    const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+    if (diff < 60) return "just now";
+    if (diff < 3600) return `${Math.floor(diff / 60)} min ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
+  };
+
   return (
     <div className="space-y-6">
       {/* Configuration Header Panel */}
       <div className="glass-panel p-6 rounded-2xl flex flex-col gap-6">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 w-full">
           <div className="space-y-1 text-left">
-            <div className="flex items-center gap-3 mb-1">
+            <div className="flex items-center gap-3 mb-1 flex-wrap">
               <h2 className="text-2xl sm:text-3xl font-display font-bold text-white">Acu Library</h2>
-              {isDriveSignedIn() && (
-                <button 
-                  onClick={async () => {
-                    const btn = document.getElementById('sync-btn');
-                    if (btn) btn.innerText = 'Syncing...';
-                    try {
-                      for (const doc of documents) {
-                        await saveDocumentToDrive(doc);
-                        await dbService.saveDocumentSource(user?.id || "anonymous", doc);
-                      }
-                      if (btn) btn.innerText = 'Synced ✓';
-                    } catch (e) {
-                      logError("Library backup sync", e);
-                      if (btn) btn.innerText = 'Sync Failed';
-                    }
-                    setTimeout(() => { if (btn) btn.innerText = 'Backup Library'; }, 2000);
-                  }}
-                  id="sync-btn"
-                  className="px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-500/20 transition-colors cursor-pointer"
-                  title="Upload all existing files in your library to Google Drive"
-                >
-                  Backup Library
-                </button>
+
+              {/* ── Drive Sync Status Pill ── */}
+              {isDriveSignedIn() ? (
+                driveStatus.syncing ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/25 text-amber-400 text-[10px] font-bold uppercase tracking-wider">
+                    <RefreshCw size={10} className="animate-spin" />
+                    Syncing...
+                  </span>
+                ) : driveStatus.error ? (
+                  <span
+                    title={driveStatus.error}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/25 text-red-400 text-[10px] font-bold uppercase tracking-wider cursor-help"
+                  >
+                    <AlertTriangle size={10} />
+                    Sync Failed — {driveStatus.error.length > 40 ? driveStatus.error.substring(0, 40) + "…" : driveStatus.error}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 text-[10px] font-bold uppercase tracking-wider">
+                    <CheckCircle size={10} />
+                    Drive Connected{driveStatus.lastSync ? ` · ${relativeTime(driveStatus.lastSync)}` : ""}
+                  </span>
+                )
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800/60 border border-slate-700/50 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
+                  <WifiOff size={10} />
+                  Drive Not Connected
+                </span>
               )}
             </div>
             <p className="text-slate-400 text-sm">Upload and manage textbook chapters, lecture transcripts, and study notes.</p>
@@ -407,21 +457,60 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                   {/* Expanded Content View — Chapter-level indexing */}
                   {isExpanded && (
                     <div className="p-4 space-y-4 bg-slate-950/30">
-                      {/* Compact file list with delete controls */}
+                      {/* Compact file list with delete controls + Drive sync badges */}
                       <div className="flex flex-wrap gap-2">
-                        {docs.map((doc) => (
-                          <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-400">
-                            <FileText size={12} className="shrink-0" />
-                            <span className="font-semibold text-slate-300 truncate max-w-[160px]">{doc.name}</span>
-                            <span className="text-slate-600">({doc.pages.length}p)</span>
-                            <button 
-                              onClick={() => handleDeleteDocument(doc.id)}
-                              className="ml-1 p-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/20 transition-colors"
-                            >
-                              <Trash2 size={10} />
-                            </button>
-                          </div>
-                        ))}
+                        {docs.map((doc) => {
+                          const isSyncing = syncingDocIds.has(doc.id);
+                          const isSynced = syncedDocIds.has(doc.id);
+                          const isFailed = failedDocIds.has(doc.id);
+                          // If Drive is connected but doc is in none of our sets,
+                          // it was uploaded before Drive was connected this session.
+                          const isUnsynced = isDriveSignedIn() && !isSyncing && !isSynced && !isFailed;
+
+                          return (
+                            <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[10px] text-slate-400">
+                              <FileText size={12} className="shrink-0" />
+                              <span className="font-semibold text-slate-300 truncate max-w-[140px]">{doc.name}</span>
+                              <span className="text-slate-600">({doc.pages.length}p)</span>
+
+                              {/* Drive sync badge */}
+                              {isDriveSignedIn() && (
+                                isSyncing ? (
+                                  <span title="Syncing to Drive..." className="text-amber-400">
+                                    <RefreshCw size={10} className="animate-spin" />
+                                  </span>
+                                ) : isFailed ? (
+                                  <button
+                                    onClick={() => syncDocToDrive(doc)}
+                                    title="Sync failed — click to retry"
+                                    className="text-red-400 hover:text-red-300 transition-colors cursor-pointer"
+                                  >
+                                    <AlertTriangle size={10} />
+                                  </button>
+                                ) : isSynced ? (
+                                  <span title="Synced to Drive" className="text-emerald-500">
+                                    <Cloud size={10} />
+                                  </span>
+                                ) : isUnsynced ? (
+                                  <button
+                                    onClick={() => syncDocToDrive(doc)}
+                                    title="Not yet on Drive — click to sync"
+                                    className="text-slate-600 hover:text-violet-400 transition-colors cursor-pointer"
+                                  >
+                                    <CloudOff size={10} />
+                                  </button>
+                                ) : null
+                              )}
+
+                              <button 
+                                onClick={() => handleDeleteDocument(doc.id)}
+                                className="ml-1 p-0.5 rounded text-slate-600 hover:text-red-400 hover:bg-red-950/20 transition-colors"
+                              >
+                                <Trash2 size={10} />
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {/* Flattened chapter list across all documents */}

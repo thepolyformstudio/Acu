@@ -57,7 +57,7 @@ async function tryGroq(body: RequestBody): Promise<string> {
       model: GROQ_MODEL,
       messages,
       temperature: body.generationConfig?.temperature ?? 0.2,
-      max_tokens: 8192,
+      max_tokens: 16000,
     }),
   });
 

@@ -1,5 +1,76 @@
 import { BoardBlueprint, getSubjectSpecificInstructions } from "@/lib/boardBlueprints";
 
+// ---------------------------------------------------------------------------
+// JSON Repair Utility
+// Handles two common AI failure modes:
+//   1. Response wrapped in markdown code fences (```json ... ```)
+//   2. Response truncated mid-JSON due to token limits
+// ---------------------------------------------------------------------------
+function repairAndParse(raw: string): any {
+  // 1. Strip markdown code fences if present
+  let text = raw.trim();
+  const fenceMatch = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenceMatch) {
+    text = fenceMatch[1].trim();
+  } else {
+    // Partial fence — strip leading ``` line if closing fence is missing
+    text = text.replace(/^```(?:json)?\s*/i, "").trim();
+  }
+
+  // 2. Try direct parse first (happy path)
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    // 3. Attempt to auto-close a truncated JSON structure
+    try {
+      const stack: string[] = [];
+      let inString = false;
+      let escaped = false;
+      let lastValidPos = 0;
+
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (escaped) { escaped = false; continue; }
+        if (ch === "\\") { escaped = true; continue; }
+        if (ch === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (inString) continue;
+        if (ch === '{' || ch === '[') {
+          stack.push(ch === '{' ? '}' : ']');
+          lastValidPos = i;
+        } else if (ch === '}' || ch === ']') {
+          if (stack.length > 0 && stack[stack.length - 1] === ch) {
+            stack.pop();
+            lastValidPos = i;
+          }
+        } else if (ch !== ' ' && ch !== '\n' && ch !== '\r' && ch !== '\t' && ch !== ',' && ch !== ':') {
+          lastValidPos = i;
+        }
+      }
+
+      // Truncate to last "safe" position and close all open brackets
+      // Find the last complete value boundary (closing } ] or a scalar end)
+      let repaired = text.substring(0, lastValidPos + 1);
+      // Remove trailing incomplete key-value (e.g. "key": )
+      repaired = repaired.replace(/,\s*"[^"]*"\s*:\s*$/, "");
+      repaired = repaired.replace(/,\s*$/, "");
+      // Close all open structures
+      const closing = stack.reverse().join("");
+      repaired = repaired + closing;
+
+      return JSON.parse(repaired);
+    } catch (repairErr) {
+      // Re-throw the original parse error with a friendly message
+      throw new Error(
+        `The AI returned an incomplete or malformed response. This usually happens when the question paper is very large. ` +
+        `Try reducing the number of questions or selecting a smaller chapter, then try again.`
+      );
+    }
+  }
+}
+
 const RATE_LIMIT_CONFIG = {
   maxRequestsPerMinute: Number(process.env.NEXT_PUBLIC_GEMINI_RATE_PER_MINUTE) || 5,
   maxRequestsPerDay: Number(process.env.NEXT_PUBLIC_GEMINI_RATE_PER_DAY) || 20,
@@ -182,7 +253,7 @@ export async function generateChapterMap(
     contents: [{ text: TAXONOMY_SYSTEM_PROMPT }, { text: prompt }],
     temperature: 0.1,
   });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 // -------------------------------------------------------------
@@ -280,7 +351,7 @@ export async function generateSlideOutline(
     contents: [{ text: SLIDES_SYSTEM_PROMPT }, { text: prompt }],
     temperature: 0.3,
   });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 // -------------------------------------------------------------
@@ -363,7 +434,7 @@ export async function generateExamPaper(
     contents: [{ text: EXAM_SYSTEM_PROMPT }, { text: prompt }],
     temperature: 0.2,
   });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 // -------------------------------------------------------------
@@ -392,7 +463,7 @@ export async function gradeWrittenAnswer(
     contents: [{ text: buildGraderSystemPrompt(gradingStandard) }, { text: userPrompt }],
     temperature: 0.1,
   });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 // -------------------------------------------------------------
@@ -404,7 +475,7 @@ const BRIEFING_SYSTEM_PROMPT = `You are an expert curriculum writer. Analyze the
 export async function generateBriefingNotes(sourceText: string, title: string, subject: string = ""): Promise<any> {
   const prompt = `Generate briefing notes for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: BRIEFING_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.2 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 const FAQ_SYSTEM_PROMPT = `You are a study guide editor. Based on the textbook content, generate a list of 5 to 10 frequently asked questions (FAQs) with comprehensive, clear answers.\nOutput strictly in JSON.\n\nJSON Output Schema:\n{\n  "faqs": [\n    { "question": "Clear, direct conceptual question?", "answer": "Detailed answer explaining the underlying science, history or logic." }\n  ]\n}`;
@@ -412,7 +483,7 @@ const FAQ_SYSTEM_PROMPT = `You are a study guide editor. Based on the textbook c
 export async function generateFAQSheet(sourceText: string, title: string, subject: string = ""): Promise<any> {
   const prompt = `Generate FAQ Sheet for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: FAQ_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.2 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 const TIMELINE_SYSTEM_PROMPT = `You are a chronological database builder. Scan the study text for key events, dates, process steps, formulas, or chronological milestones.\nGenerate a sequential list of steps or historical events in JSON.\n\nJSON Output Schema:\n{\n  "timeline": [\n    { "timeLabel": "Step 1 or Date (e.g. 1914, Phase A)", "title": "Milestone Title", "description": "Details of what occurs here." }\n  ]\n}`;
@@ -420,7 +491,7 @@ const TIMELINE_SYSTEM_PROMPT = `You are a chronological database builder. Scan t
 export async function generateTimeline(sourceText: string, title: string, subject: string = ""): Promise<any> {
   const prompt = `Generate chronological timeline or process phases for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: TIMELINE_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.2 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 const PODCAST_SYSTEM_PROMPT = `You are a podcast writer. Create a script of an audio overview where two co-hosts (Host A and Host B) engage in a lively, informative conversation about the syllabus text.\nHost A is curious and asks conceptual questions. Host B explains ideas simply using clear analogies. Keep the script fun, brief, and educational (10 to 15 dialogue lines).\nOutput strictly in JSON.\n\nJSON Output Schema:\n{\n  "script": [\n    { "speaker": "Host A", "text": "Welcome back to the podcast. Today we are looking at..." },\n    { "speaker": "Host B", "text": "Yes! And it's a fascinating topic because..." }\n  ]\n}`;
@@ -428,7 +499,7 @@ const PODCAST_SYSTEM_PROMPT = `You are a podcast writer. Create a script of an a
 export async function generatePodcastScript(sourceText: string, title: string, subject: string = ""): Promise<any> {
   const prompt = `Generate a lively dialogue podcast script for "${title}" based on this text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: PODCAST_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.3 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 const MCQ_SYSTEM_PROMPT = `You are an expert curriculum designer.\nGenerate 25 to 50 high-quality Multiple Choice Questions (MCQs) covering the provided chapter text comprehensively.\nEnsure the questions vary in difficulty and test both factual recall and conceptual understanding.\nOutput strictly a valid JSON array.\n\nJSON Schema:\n[\n  {\n    "question": "What is the primary function of mitochondria?",\n    "options": ["Respiration", "Digestion", "Photosynthesis", "Circulation"],\n    "correctAnswer": "Respiration",\n    "explanation": "Mitochondria are often referred to as the powerhouse of the cell, responsible for cellular respiration."\n  }\n]`;
@@ -436,7 +507,7 @@ const MCQ_SYSTEM_PROMPT = `You are an expert curriculum designer.\nGenerate 25 t
 export async function generateMCQs(sourceText: string, title: string, subject: string = ""): Promise<any> {
   const prompt = `Generate 25-50 high quality MCQs for the chapter "${title}" using this source text:\n\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: MCQ_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.2 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }
 
 const FLASHCARD_SYSTEM_PROMPT = `You are an expert active-recall study guide tutor.\nBased on the textbook text, generate a comprehensive list of high-quality active-recall study flashcards.\nEach flashcard must contain:\n- "front": a clear question, concept, term, or prompt\n- "back": a concise, clear definition, answer, or explanation (keep it punchy and easy to memorize)\nDo not use markdown inside JSON keys. Output strictly a valid JSON array matching the schema.\n\nJSON Schema:\n[\n  {\n    "front": "What is the primary function of chloroplasts?",\n    "back": "Photosynthesis. They capture light energy to synthesize food/sugars."\n  }\n]`;
@@ -444,5 +515,5 @@ const FLASHCARD_SYSTEM_PROMPT = `You are an expert active-recall study guide tut
 export async function generateFlashcards(sourceText: string, title: string, count: number = 15, subject: string = ""): Promise<any[]> {
   const prompt = `Generate exactly ${count} educational flashcards for the chapter "${title}".\nUse this textbook source text as the exclusive source:\n\n[TEXT PASSAGE]\n${sourceText}\n\n${getSubjectSpecificInstructions(subject)}`;
   const text = await callAI({ contents: [{ text: FLASHCARD_SYSTEM_PROMPT }, { text: prompt }], temperature: 0.3 });
-  return JSON.parse(text.trim());
+  return repairAndParse(text);
 }

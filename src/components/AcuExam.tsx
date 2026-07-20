@@ -1380,7 +1380,7 @@ export default function AcuExam({
                     studentAnswerImages,
                     secondsRemaining,
                     selectedSubject,
-                    selectedChapterKey,
+                    selectedChapterKeys,
                     examTitle,
                     classGrade,
                     totalQuestions,

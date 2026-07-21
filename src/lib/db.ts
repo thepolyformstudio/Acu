@@ -1,7 +1,7 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer, deleteDoc, writeBatch } from "firebase/firestore";
-import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt } from "./sync";
+import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt, clearLocalCache } from "./sync";
 
 export const INTERNAL_TESTER_EMAIL = "ejmultiverse@gmail.com";
 export const ADMIN_EMAILS = ["thepolyformstudio@gmail.com", "admin@acu.com"];
@@ -600,38 +600,54 @@ export const dbService = {
   },
 
   async deleteDocumentSource(profileId: string, docId: string): Promise<void> {
+    // 1. Delete from local client caches (IndexedDB + LocalStorage) immediately
+    await removeCachedDocument(docId);
+    if (typeof window !== "undefined") {
+      const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+      const filtered = docs.filter((d: any) => d.id !== docId);
+      saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+    }
+
+    // 2. Delete from Firestore in parallel without blocking main thread
     if (isFirebaseConfigured && firestore) {
       try {
-        const pagesRef = collection(firestore, "profiles", profileId, "documents", docId, "pages");
-        const pageSnap = await getDocs(pagesRef);
-        for (const pDoc of pageSnap.docs) {
-          await deleteDoc(pDoc.ref);
-        }
         await deleteDoc(doc(firestore, "profiles", profileId, "documents", docId));
+        const pagesRef = collection(firestore, "profiles", profileId, "documents", docId, "pages");
+        getDocs(pagesRef).then((pageSnap) => {
+          pageSnap.docs.forEach((pDoc) => deleteDoc(pDoc.ref).catch(() => {}));
+        }).catch(() => {});
       } catch (err) {
         console.error("Firestore deleteDocumentSource failed:", err);
       }
     }
-    // Always clean up client caches (IndexedDB & LocalStorage mock)
-    await removeCachedDocument(docId);
-    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
-    const filtered = docs.filter((d: any) => d.id !== docId);
-    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
   },
 
   async clearAllDocuments(profileId: string): Promise<void> {
     try {
       const docs = await this.getDocumentSources(profileId);
-      for (const d of docs) {
-        await this.deleteDocumentSource(profileId, d.id);
+      
+      // 1. Purge all local client storage (IndexedDB + LocalStorage) immediately
+      await clearLocalCache();
+      if (typeof window !== "undefined") {
+        localStorage.removeItem(LOCAL_MOCK_DOCUMENTS);
+        localStorage.removeItem(LOCAL_MOCK_ATTEMPTS);
       }
+
+      // 2. Delete from Firestore in background
+      if (isFirebaseConfigured && firestore) {
+        for (const d of docs) {
+          deleteDoc(doc(firestore, "profiles", profileId, "documents", d.id)).catch(() => {});
+          const pagesRef = collection(firestore, "profiles", profileId, "documents", d.id, "pages");
+          getDocs(pagesRef).then((pageSnap) => {
+            pageSnap.docs.forEach((pDoc) => deleteDoc(pDoc.ref).catch(() => {}));
+          }).catch(() => {});
+        }
+      }
+
+      // 3. Clear all exam attempts
       await this.clearAllAttempts(profileId);
     } catch (err) {
       console.error("clearAllDocuments error:", err);
-    }
-    if (typeof window !== "undefined") {
-      localStorage.removeItem(LOCAL_MOCK_DOCUMENTS);
-      localStorage.removeItem(LOCAL_MOCK_ATTEMPTS);
     }
   },
 

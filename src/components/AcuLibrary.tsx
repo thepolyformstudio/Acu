@@ -12,10 +12,11 @@ import {
   saveDocumentToDrive, deleteDocumentFromDrive, isDriveSignedIn,
   onDriveSyncStatusChange, getDriveSyncStatus, DriveSyncStatus
 } from "@/lib/googleDrive";
+import { hydrateDocumentPayload } from "@/lib/docHydrator";
 import { 
   Upload, FileText, Trash2, FolderOpen,
   RefreshCw, BookOpen, ShieldAlert,
-  ChevronRight, ChevronDown, Plus, X,
+  ChevronRight, ChevronDown, Plus, X, Sparkles,
   Cloud, CloudOff, CheckCircle, AlertTriangle, WifiOff
 } from "lucide-react";
 
@@ -155,31 +156,26 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
 
         let chapterMap: { name: string; summary: string; startPage: number; endPage: number }[] = [];
 
-        if (uploadMode === "single_chapter" && !isImageFile) {
+        setStatusMessage(`[File ${fIdx + 1}/${files.length}] Gemini AI scanning document pages for official chapter title & summary...`);
+        try {
+          chapterMap = await generateAutomatedChapterMap(pages, stagedItem.title);
+        } catch (cErr) {
+          console.warn("[AcuLibrary] Automated chapter scan error, falling back:", cErr);
           chapterMap = [{
-            name: stagedItem.title,
+            name: stagedItem.title || file.name.replace(/\.[^/.]+$/, ""),
             summary: "Chapter content.",
             startPage: 1,
             endPage: pages.length
           }];
-        } else {
-          setStatusMessage(`[File ${fIdx + 1}/${files.length}] Gemini is scanning document for chapters & topics...`);
-          try {
-            chapterMap = await generateAutomatedChapterMap(pages, stagedItem.title);
-          } catch (cErr) {
-            console.warn("[AcuLibrary] Automated chapter scan error, falling back:", cErr);
-            chapterMap = [{
-              name: stagedItem.title || file.name.replace(/\.[^/.]+$/, ""),
-              summary: "Full document",
-              startPage: 1,
-              endPage: pages.length
-            }];
-          }
         }
+
+        const docTitle = (chapterMap.length > 0 && chapterMap[0].name && chapterMap[0].name.trim().length > 0) 
+          ? chapterMap[0].name 
+          : (stagedItem.title || file.name);
 
         const newDoc: DocumentSource = {
           id: "doc_" + Math.random().toString(36).substring(2, 9),
-          name: stagedItem.title || file.name,
+          name: docTitle,
           subject: activeSubject || "General",
           pages,
           chapterMap,
@@ -285,6 +281,42 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     } catch (err) {
       logError("Clear library error", err);
     } finally {
+      setUploading(false);
+      setStatusMessage("");
+    }
+  };
+
+  const handleAutoIndexSubject = async (subject: string, docs: DocumentSource[]) => {
+    if (!confirm(`Run AI Auto-Index on "${subject}"?\n\nGemini AI will scan all ${docs.length} file(s) in this subject to detect official textbook chapter titles and concept summaries automatically.`)) return;
+    setUploading(true);
+    let count = 0;
+    try {
+      for (const docItem of docs) {
+        count++;
+        setStatusMessage(`[${count}/${docs.length}] Gemini scanning "${docItem.name}" for official chapter title...`);
+        const hydrated = await hydrateDocumentPayload(docItem, user?.id || "anonymous");
+        if (hydrated.pages && hydrated.pages.length > 0) {
+          const newMap = await generateAutomatedChapterMap(hydrated.pages, docItem.name);
+          if (newMap && newMap.length > 0) {
+            const officialTitle = newMap[0].name || docItem.name;
+            const updatedDoc: DocumentSource = {
+              ...hydrated,
+              name: officialTitle,
+              chapterMap: newMap
+            };
+            await dbService.saveDocumentSource(user?.id || "anonymous", updatedDoc);
+          }
+        }
+      }
+      setStatusMessage("AI Auto-Index complete!");
+      setTimeout(() => {
+        setUploading(false);
+        setStatusMessage("");
+        onRefresh();
+      }, 1200);
+    } catch (err) {
+      logError("AutoIndex error", err);
+      alert(safeError(err, "AI Auto-Indexing failed."));
       setUploading(false);
       setStatusMessage("");
     }
@@ -511,9 +543,17 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                     </div>
                     <div className="flex items-center gap-2">
                       <button
+                        onClick={(e) => { e.stopPropagation(); handleAutoIndexSubject(subject, docs); }}
+                        title={`Run Gemini AI to detect official chapter titles & summaries for all files in "${subject}"`}
+                        className="px-2.5 py-1 rounded-lg text-[10px] font-semibold bg-violet-950/60 hover:bg-violet-900 border border-violet-500/30 text-violet-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Sparkles size={11} className="text-amber-400" />
+                        <span>AI Auto-Index</span>
+                      </button>
+                      <button
                         onClick={(e) => { e.stopPropagation(); handleDeleteSubject(subject, docs); }}
                         title={`Delete all ${docs.length} file(s) in "${subject}"`}
-                        className="p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors cursor-pointer"
                       >
                         <Trash2 size={13} />
                       </button>

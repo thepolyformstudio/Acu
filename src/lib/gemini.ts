@@ -316,30 +316,22 @@ export async function generateAutomatedChapterMap(
   metadata?: BookMetadata
 ): Promise<{ name: string; summary: string; startPage: number; endPage: number }[]> {
   if (!pages || pages.length === 0) return [];
-  
-  if (pages.length === 1) {
-    return [{
-      name: docTitle || "Chapter 1",
-      summary: "Full document content.",
-      startPage: 1,
-      endPage: 1
-    }];
-  }
 
   try {
-    const taggedStream = pages
+    const samplePages = pages.slice(0, 15);
+    const taggedStream = samplePages
       .map(p => {
-        const snippet = p.text.length > 2500 ? p.text.substring(0, 2500) + "..." : p.text;
+        const snippet = p.text.length > 2000 ? p.text.substring(0, 2000) + "..." : p.text;
         return `[PAGE ${p.pageNumber}]\n${snippet}`;
       })
       .join("\n\n");
 
-    let metaContext = "";
+    let metaContext = docTitle ? `Filename/Hint: "${docTitle}". ` : "";
     if (metadata && (metadata.name || metadata.publisher)) {
-      metaContext = `Book Context: "${metadata.name || 'Unknown'}" (${metadata.publisher || 'N/A'}). `;
+      metaContext += `Book Context: "${metadata.name || 'Unknown'}" (${metadata.publisher || 'N/A'}). `;
     }
 
-    const prompt = `Analyze this page-tagged document text and detect all chapter titles and physical page boundaries:\n${metaContext}\nTotal pages: ${pages.length}\n\n[DOCUMENT TEXT STREAM]\n${taggedStream}`;
+    const prompt = `Analyze this page-tagged document text and detect all chapter titles, unit headers, or lesson names along with physical page boundaries:\n${metaContext}\nTotal pages: ${pages.length}\n\n[DOCUMENT TEXT STREAM]\n${taggedStream}`;
 
     const text = await callAI({
       contents: [{ text: FULL_DOCUMENT_CHAPTER_SCANNER_PROMPT }, { text: prompt }],
@@ -353,7 +345,7 @@ export async function generateAutomatedChapterMap(
         const nextItemStart = idx < parsed.length - 1 ? Number(parsed[idx + 1].startPage) || (start + 1) : pages.length + 1;
         const end = Math.max(start, Math.min(pages.length, Number(item.endPage) || (nextItemStart - 1)));
         return {
-          name: String(item.name || `Chapter ${idx + 1}`).trim(),
+          name: String(item.name || docTitle || `Chapter ${idx + 1}`).trim(),
           summary: String(item.summary || "Chapter content.").trim(),
           startPage: start,
           endPage: Math.min(pages.length, end)

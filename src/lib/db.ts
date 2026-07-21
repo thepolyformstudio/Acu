@@ -4,9 +4,14 @@ import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, quer
 import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt } from "./sync";
 
 export const INTERNAL_TESTER_EMAIL = "ejmultiverse@gmail.com";
+export const ADMIN_EMAILS = ["thepolyformstudio@gmail.com", "admin@acu.com"];
 
 export function isInternalTester(email: string): boolean {
   return email.toLowerCase().trim() === INTERNAL_TESTER_EMAIL;
+}
+
+export function isAdminUser(email: string): boolean {
+  return ADMIN_EMAILS.includes(email.toLowerCase().trim());
 }
 
 // Define TypeScript interfaces
@@ -140,10 +145,15 @@ const saveMockData = (key: string, data: any) => {
 // -------------------------------------------------------------
 
 export function checkPremiumExpiry(profile: UserProfile): UserProfile {
-  const isInternal = isInternalTester(profile.email);
-  const isAdminEmail = profile.email.toLowerCase().trim() === 'admin@acu.com';
-  if (isInternal || isAdminEmail) {
+  const emailClean = profile.email.toLowerCase().trim();
+  const isAdmin = isAdminUser(emailClean);
+  const isInternal = isInternalTester(emailClean);
+  
+  if (isAdmin) {
     return { ...profile, role: 'admin', is_premium: true, premium_expires_at: null };
+  }
+  if (isInternal) {
+    return { ...profile, role: 'student', is_premium: true, premium_expires_at: null };
   }
   if (profile.premium_expires_at && new Date() > new Date(profile.premium_expires_at)) {
     return { ...profile, is_premium: false, premium_expires_at: null };
@@ -174,7 +184,8 @@ export const dbService = {
   async signUp(email: string, password: string, role: 'parent' | 'student'): Promise<UserProfile> {
     const emailClean = email.toLowerCase().trim();
     const isInternal = isInternalTester(emailClean);
-    const finalRole = (emailClean === 'admin@acu.com' || isInternal) ? 'admin' : role;
+    const isAdmin = isAdminUser(emailClean);
+    const finalRole = isAdmin ? 'admin' : role;
 
     if (isFirebaseConfigured && auth && firestore) {
       const credential = await createUserWithEmailAndPassword(auth, email, password);

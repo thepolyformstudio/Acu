@@ -625,11 +625,13 @@ export const dbService = {
       for (const d of docs) {
         await this.deleteDocumentSource(profileId, d.id);
       }
+      await this.clearAllAttempts(profileId);
     } catch (err) {
       console.error("clearAllDocuments error:", err);
     }
     if (typeof window !== "undefined") {
       localStorage.removeItem(LOCAL_MOCK_DOCUMENTS);
+      localStorage.removeItem(LOCAL_MOCK_ATTEMPTS);
     }
   },
 
@@ -688,14 +690,28 @@ export const dbService = {
 
   async deleteExamAttempt(profileId: string, attemptId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await deleteDoc(doc(firestore, "profiles", profileId, "attempts", attemptId));
-      await removeCachedAttempt(attemptId);
-    } else {
-      const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
-      if (allAttempts[profileId]) {
-        allAttempts[profileId] = allAttempts[profileId].filter((a: ExamAttempt) => a.id !== attemptId);
-        saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+      try {
+        await deleteDoc(doc(firestore, "profiles", profileId, "attempts", attemptId));
+      } catch (err) {
+        console.error("Firestore deleteExamAttempt failed:", err);
       }
+    }
+    await removeCachedAttempt(attemptId);
+    const allAttempts = getMockData(LOCAL_MOCK_ATTEMPTS, {});
+    if (allAttempts[profileId]) {
+      allAttempts[profileId] = allAttempts[profileId].filter((a: ExamAttempt) => a.id !== attemptId);
+      saveMockData(LOCAL_MOCK_ATTEMPTS, allAttempts);
+    }
+  },
+
+  async clearAllAttempts(profileId: string): Promise<void> {
+    try {
+      const attempts = await this.getExamAttempts(profileId);
+      for (const a of attempts) {
+        await this.deleteExamAttempt(profileId, a.id);
+      }
+    } catch (err) {
+      console.error("clearAllAttempts error:", err);
     }
   },
 

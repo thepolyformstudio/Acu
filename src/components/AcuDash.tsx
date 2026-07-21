@@ -136,22 +136,12 @@ export default function AcuDash({
     });
   });
 
-  // Map attempts to subjects
+  // Map attempts to existing document subjects
   attempts.forEach((a) => {
     const subj = a.subject || "General";
     if (subjectsMap[subj]) {
       subjectsMap[subj].attemptsCount += 1;
       subjectsMap[subj].totalAttemptsScore += (a.marksObtained / a.maxMarks) * 100;
-    } else {
-      // Handle edge cases where attempt is saved but doc is deleted
-      subjectsMap[subj] = {
-        subjectName: subj,
-        docs: [],
-        totalChapters: 0,
-        completedChapters: 0,
-        attemptsCount: 1,
-        totalAttemptsScore: (a.marksObtained / a.maxMarks) * 100
-      };
     }
   });
 

@@ -159,26 +159,6 @@ export default function AcuDash({
 
   return (
     <div className="space-y-6">
-      {/* Drive backup warning banner */}
-      {!isDriveSignedIn() && documents.length > 0 && (
-        <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-950/10 flex items-start gap-3">
-          <CloudOff size={18} className="text-amber-400 shrink-0 mt-0.5" />
-          <div className="text-xs text-slate-300">
-            <span className="font-semibold text-amber-400">Backup not configured.</span>{" "}
-            Your study data is stored in your browser and may be lost if you clear your cache.{" "}
-            {onNavigateSettings && (
-              <button
-                type="button"
-                onClick={onNavigateSettings}
-                className="text-violet-400 hover:underline cursor-pointer font-medium inline"
-              >
-                Connect Google Drive
-              </button>
-            )}
-            {" "}to back up your files and prevent data loss.
-          </div>
-        </div>
-      )}
 
       {/* -------------------------------------------------------------
           PARENT ROLE PROFILE MANAGEMENT

@@ -270,6 +270,26 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
     onRefresh();
   };
 
+  const handleClearEntireLibrary = async () => {
+    if (!confirm(`Clear your entire library?\n\nThis will permanently delete all ${documents.length} document(s) from your account. This cannot be undone.`)) return;
+    setUploading(true);
+    setStatusMessage("Clearing library documents...");
+    try {
+      await dbService.clearAllDocuments(user?.id || "anonymous");
+      if (isDriveSignedIn()) {
+        for (const doc of documents) {
+          deleteDocumentFromDrive(doc.id).catch((err) => logError("Drive delete (clear all)", err));
+        }
+      }
+      onRefresh();
+    } catch (err) {
+      logError("Clear library error", err);
+    } finally {
+      setUploading(false);
+      setStatusMessage("");
+    }
+  };
+
   // Group documents by their subject
   const groupedDocs: { [subject: string]: DocumentSource[] } = {};
   documents.forEach((doc) => {
@@ -398,7 +418,18 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
               </div>
             </div>
 
-            <div className="shrink-0 flex flex-col gap-1 items-end">
+            <div className="shrink-0 flex items-center gap-2 flex-wrap">
+              {documents.length > 0 && !uploading && (
+                <button
+                  onClick={handleClearEntireLibrary}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 bg-slate-900 hover:bg-red-950/40 text-slate-400 hover:text-red-400 border border-slate-800 hover:border-red-900/50 rounded-xl text-xs font-semibold transition-all cursor-pointer h-10"
+                  title="Delete all documents from your library"
+                >
+                  <Trash2 size={13} />
+                  <span>Clear Library</span>
+                </button>
+              )}
+
               {uploading ? (
                 <div className="py-2.5 px-6 rounded-xl border border-violet-500/20 bg-violet-950/20 text-center flex items-center justify-center gap-3 h-10 w-full sm:w-auto">
                   <RefreshCw className="animate-spin text-violet-400" size={16} />

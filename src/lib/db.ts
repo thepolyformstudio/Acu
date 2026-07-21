@@ -611,11 +611,25 @@ export const dbService = {
       } catch (err) {
         console.error("Firestore deleteDocumentSource failed:", err);
       }
-      await removeCachedDocument(docId);
-    } else {
-      const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
-      const filtered = docs.filter((d: any) => d.id !== docId);
-      saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+    }
+    // Always clean up client caches (IndexedDB & LocalStorage mock)
+    await removeCachedDocument(docId);
+    const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
+    const filtered = docs.filter((d: any) => d.id !== docId);
+    saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
+  },
+
+  async clearAllDocuments(profileId: string): Promise<void> {
+    try {
+      const docs = await this.getDocumentSources(profileId);
+      for (const d of docs) {
+        await this.deleteDocumentSource(profileId, d.id);
+      }
+    } catch (err) {
+      console.error("clearAllDocuments error:", err);
+    }
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(LOCAL_MOCK_DOCUMENTS);
     }
   },
 

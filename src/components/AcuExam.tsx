@@ -4,7 +4,8 @@ import React, { useState, useEffect } from "react";
 import { DocumentSource, ExamAttempt, dbService, UserProfile } from "@/lib/db";
 import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
 import { getBlueprintForBoard, BOARD_OPTION_GROUPS, BoardBlueprint } from "@/lib/boardBlueprints";
-import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
+import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { hydrateDocumentPayload } from "@/lib/docHydrator";
 import { 
   Play, FileText, CheckCircle, RefreshCw, BarChart2, 
   ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2, Download
@@ -161,6 +162,33 @@ export default function AcuExam({
   const [customStartPage, setCustomStartPage] = useState(1);
   const [customEndPage, setCustomEndPage] = useState(10);
 
+  // Restructured Exam Configurator & Custom Builder State
+  const [chapterSearchFilter, setChapterSearchFilter] = useState("");
+  const [creationMode, setCreationMode] = useState<"official_blueprint" | "custom_builder">("official_blueprint");
+
+  interface CustomQuestionTypeState {
+    id: string;
+    name: string;
+    description: string;
+    enabled: boolean;
+    count: number;
+    marksPerQuestion: number;
+  }
+
+  const [customQuestionTypes, setCustomQuestionTypes] = useState<CustomQuestionTypeState[]>([
+    { id: "mcq", name: "Multiple Choice Questions (MCQ)", description: "Single-choice objective items", enabled: true, count: 10, marksPerQuestion: 1 },
+    { id: "true_false", name: "True / False", description: "Binary boolean statements", enabled: false, count: 5, marksPerQuestion: 1 },
+    { id: "vsa", name: "Very Short Answers (VSA)", description: "1-2 sentence definitions & facts", enabled: true, count: 5, marksPerQuestion: 2 },
+    { id: "sa", name: "Short Answers (SA)", description: "Short explanatory analytical questions", enabled: true, count: 4, marksPerQuestion: 3 },
+    { id: "la", name: "Long Answers (LA)", description: "In-depth multi-part descriptive questions", enabled: true, count: 2, marksPerQuestion: 5 },
+    { id: "comprehension", name: "Comprehension / Passage-Based", description: "Case passage followed by sub-questions", enabled: false, count: 1, marksPerQuestion: 5 },
+    { id: "case_study", name: "Case Study / Assertion-Reasoning", description: "Real-world context & logical reasoning", enabled: false, count: 1, marksPerQuestion: 4 },
+  ]);
+
+  const activeCustomTypes = customQuestionTypes.filter(t => t.enabled && t.count > 0);
+  const customTotalQuestions = activeCustomTypes.reduce((acc, t) => acc + Number(t.count || 0), 0);
+  const customTotalMarks = activeCustomTypes.reduce((acc, t) => acc + (Number(t.count || 0) * Number(t.marksPerQuestion || 0)), 0);
+
   // Running Exam State
   const [activeExam, setActiveExam] = useState<any | null>(null);
   const [studentAnswers, setStudentAnswers] = useState<{ [qId: string]: string }>({});
@@ -230,12 +258,11 @@ export default function AcuExam({
       let selectedDoc = subjectDocs[0];
       if (!selectedDoc.pages || selectedDoc.pages.length === 0) {
         setLoading(true);
-        setLoadingMessage("Fetching document payload from Google Drive...");
-        const fullDoc = await loadSingleDocumentFromDrive(selectedDoc.id);
-        if (fullDoc) {
-          selectedDoc = { ...selectedDoc, pages: fullDoc.pages };
-        } else {
-          alert("Could not load document payload from Google Drive. Please ensure it is synced.");
+        setLoadingMessage(`Loading payload for "${selectedDoc.name}"...`);
+        try {
+          selectedDoc = await hydrateDocumentPayload(selectedDoc, user?.id || "anonymous");
+        } catch (hErr: any) {
+          alert(hErr.message || "Could not load document payload.");
           setLoading(false);
           setLoadingMessage("");
           return;
@@ -257,11 +284,28 @@ export default function AcuExam({
         if (textSlices.trim().length === 0) throw new Error("No readable text content in the selected page range.");
         setLoadingMessage("Creating board blueprint paper questions...");
         const docSubject = selectedDoc.subject || "General";
-        const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks, docSubject, activeBlueprint);
+        const isCustomMode = creationMode === "custom_builder";
+        const customSpecs = isCustomMode 
+          ? activeCustomTypes.map(t => ({ type: t.name, count: t.count, marksPerQuestion: t.marksPerQuestion }))
+          : null;
+        const paperTotalMarks = isCustomMode ? customTotalMarks : totalMarks;
+        const paperBlueprint = isCustomMode ? null : activeBlueprint;
+
+        const examPaper = await generateExamPaper(
+          textSlices, 
+          examTitle, 
+          classGrade, 
+          activeBoard, 
+          distribution, 
+          paperTotalMarks, 
+          docSubject, 
+          paperBlueprint, 
+          customSpecs
+        );
         let questionIndex = 1;
         examPaper.sections.forEach((sec: any) => { sec.questions.forEach((q: any) => { q.id = `q_${questionIndex}`; questionIndex++; }); });
         examPaper.title = examTitle;
-        examPaper.maxMarks = totalMarks;
+        examPaper.maxMarks = paperTotalMarks;
         examPaper.durationMinutes = durationMinutes;
         examPaper.subject = docSubject;
         examPaper.documentId = selectedDoc.id;
@@ -302,12 +346,11 @@ export default function AcuExam({
         let doc = documents.find(d => d.id === docId);
         if (!doc) continue;
         if (!doc.pages || doc.pages.length === 0) {
-          setLoadingMessage(`Fetching "${doc.name}" from Google Drive...`);
-          const fullDoc = await loadSingleDocumentFromDrive(docId);
-          if (fullDoc) {
-            doc = { ...doc, pages: fullDoc.pages };
-          } else {
-            throw new Error(`Could not load document "${doc.name}" from Google Drive. Please ensure it is synced.`);
+          setLoadingMessage(`Loading payload for "${doc.name}"...`);
+          try {
+            doc = await hydrateDocumentPayload(doc, user?.id || "anonymous");
+          } catch (hErr: any) {
+            throw new Error(`Could not load document "${doc.name}". ${hErr.message || ""}`);
           }
         }
         resolvedDocs[docId] = doc;
@@ -339,9 +382,26 @@ export default function AcuExam({
           ? chaptersToUse[0].name
           : `${chaptersToUse.length} Chapters (${chaptersToUse.map(c => c.name).join(", ")})`;
 
-      setLoadingMessage("Creating board blueprint paper questions...");
+      setLoadingMessage("Creating question paper...");
       const docSubject = selectedSubject || "General";
-      const examPaper = await generateExamPaper(textSlices, examTitle, classGrade, activeBoard, distribution, totalMarks, docSubject, activeBlueprint);
+      const isCustomMode = creationMode === "custom_builder";
+      const customSpecs = isCustomMode 
+        ? activeCustomTypes.map(t => ({ type: t.name, count: t.count, marksPerQuestion: t.marksPerQuestion }))
+        : null;
+      const paperTotalMarks = isCustomMode ? customTotalMarks : totalMarks;
+      const paperBlueprint = isCustomMode ? null : activeBlueprint;
+
+      const examPaper = await generateExamPaper(
+        textSlices, 
+        examTitle, 
+        classGrade, 
+        activeBoard, 
+        distribution, 
+        paperTotalMarks, 
+        docSubject, 
+        paperBlueprint, 
+        customSpecs
+      );
 
       let questionIndex = 1;
       examPaper.sections.forEach((sec: any) => {
@@ -352,7 +412,7 @@ export default function AcuExam({
       });
 
       examPaper.title = examTitle;
-      examPaper.maxMarks = totalMarks;
+      examPaper.maxMarks = paperTotalMarks;
       examPaper.durationMinutes = durationMinutes;
       examPaper.subject = docSubject;
       examPaper.documentId = chaptersToUse[0].docId;
@@ -794,49 +854,83 @@ export default function AcuExam({
       {/* -------------------------------------------------------------
           SCREEN A: EXAM CONFIGURATOR (INITIAL DESIGN SCREEN)
          ------------------------------------------------------------- */}
-      {!activeExam && !scorecard && (
-        <div className="glass-panel p-6 rounded-2xl space-y-6">
-          <div>
-            <h2 className="text-2xl sm:text-3xl font-display font-bold text-white mb-1">AcuExam Paper Generator</h2>
-            <p className="text-slate-400 text-sm">Create CBSE / Board syllabus-aligned exam papers with custom marking blueprints.</p>
+        {!activeExam && !scorecard && (
+        <div className="space-y-6">
+          {/* Header Banner */}
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-violet-500/20 shadow-[0_0_30px_rgba(139,92,246,0.1)] relative overflow-hidden text-left">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-violet-600/10 blur-[80px] pointer-events-none rounded-full"></div>
+            <h2 className="text-2xl sm:text-3xl font-display font-extrabold text-white mb-1">AcuExam Paper Generator</h2>
+            <p className="text-slate-400 text-sm font-medium">Generate CBSE & Board-aligned exam papers or build your own custom question paper pattern.</p>
           </div>
 
           {loading ? (
-            <div className="p-12 text-center space-y-3">
-              <RefreshCw className="animate-spin text-violet-400 mx-auto" size={28} />
-              <h4 className="text-sm font-semibold text-white">{loadingMessage}</h4>
-              <p className="text-xs text-slate-500">Do not refresh. Gathering questions and marking guides.</p>
+            <div className="glass-panel p-12 rounded-3xl text-center space-y-4">
+              <RefreshCw className="animate-spin text-violet-400 mx-auto" size={32} />
+              <h4 className="text-base font-bold text-white">{loadingMessage}</h4>
+              <p className="text-xs text-slate-500">Acu AI is structuring questions, model answers, and evaluation rubrics...</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Inputs grids */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-end">
-                <div className="space-y-1 text-left">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Subject</label>
-                  <select
-                    value={selectedSubject}
-                    onChange={(e) => {
-                      setSelectedSubject(e.target.value);
-                      setSelectedChapterKeys([]);
-                      setSelectAllChapters(false);
-                    }}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
-                  >
-                    <option value="">-- Choose subject --</option>
-                    {subjectsList.map((s) => {
-                      const count = documents
-                        .filter(d => (d.subject || "General") === s)
-                        .reduce((acc, d) => acc + (d.chapterMap?.length || 0), 0);
-                      return <option key={s} value={s}>{s} ({count} chapters)</option>;
-                    })}
-                  </select>
+            <div className="space-y-6">
+              {/* -------------------------------------------------------------
+                  STEP 1: SYLLABUS & CHAPTER SELECTION CARD
+                 ------------------------------------------------------------- */}
+              <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-6 text-left">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-violet-400 uppercase tracking-widest px-2.5 py-1 bg-violet-500/10 rounded-md border border-violet-500/20">Step 1</span>
+                    <h3 className="text-lg font-bold text-white mt-1">Target Subject & Chapter Selection</h3>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={manualChapterOverride}
+                        onChange={(e) => setManualChapterOverride(e.target.checked)}
+                        className="accent-violet-500 cursor-pointer w-4 h-4 rounded"
+                      />
+                      <span>Input Topic / Page Range Manually</span>
+                    </label>
+                  </div>
                 </div>
 
-                {!manualChapterOverride ? (
-                  <div className="space-y-1 col-span-full md:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapters</label>
-                      {selectedSubject && flatChapters.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                  {/* Subject Dropdown */}
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Select Subject</label>
+                    <select
+                      value={selectedSubject}
+                      onChange={(e) => {
+                        setSelectedSubject(e.target.value);
+                        setSelectedChapterKeys([]);
+                        setSelectAllChapters(false);
+                      }}
+                      className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                    >
+                      <option value="">-- Choose Subject --</option>
+                      {subjectsList.map((s) => {
+                        const count = documents
+                          .filter(d => (d.subject || "General") === s)
+                          .reduce((acc, d) => acc + (d.chapterMap?.length || 0), 0);
+                        return <option key={s} value={s}>{s} ({count} chapters available)</option>;
+                      })}
+                    </select>
+                  </div>
+
+                  {/* Chapter Search Filter (when not manual override) */}
+                  {!manualChapterOverride && selectedSubject && flatChapters.length > 0 && (
+                    <div className="space-y-1.5 md:col-span-2 flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Filter Chapters</label>
+                        <input
+                          type="text"
+                          placeholder="Search chapter title or topic..."
+                          value={chapterSearchFilter}
+                          onChange={(e) => setChapterSearchFilter(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        />
+                      </div>
+                      <div className="pt-4">
                         <button
                           type="button"
                           onClick={() => {
@@ -844,267 +938,385 @@ export default function AcuExam({
                             setSelectAllChapters(next);
                             setSelectedChapterKeys(next ? flatChapters.map(c => `${c.docId}_${c.chapIdx}`) : []);
                           }}
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-colors cursor-pointer ${
+                          className={`text-xs font-bold px-3 py-2 rounded-xl transition-all cursor-pointer ${
                             selectAllChapters
-                              ? "bg-violet-600 text-white"
-                              : "border border-slate-700 text-slate-400 hover:border-violet-500 hover:text-violet-400"
+                              ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                              : "border border-slate-700 text-slate-300 hover:border-violet-500 hover:text-violet-400 bg-slate-950/60"
                           }`}
                         >
-                          {selectAllChapters ? "✓ Entire Subject" : "Select Entire Subject"}
+                          {selectAllChapters ? "✓ Entire Subject Selected" : "Select Entire Subject"}
                         </button>
-                      )}
+                      </div>
                     </div>
+                  )}
+                </div>
 
+                {/* Chapter Cards Selection Area */}
+                {!manualChapterOverride ? (
+                  <div className="space-y-2">
                     {!selectedSubject ? (
-                      <p className="text-[10px] text-slate-600 py-2">Select a subject first.</p>
+                      <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-500 text-xs italic">
+                        Please select a subject above to view and choose chapters.
+                      </div>
                     ) : flatChapters.length === 0 ? (
-                      <p className="text-[10px] text-slate-600 py-2">No chapters found for this subject.</p>
+                      <div className="p-8 text-center border border-dashed border-slate-800 rounded-2xl text-slate-500 text-xs italic">
+                        No indexed chapters found under "{selectedSubject}".
+                      </div>
                     ) : (
-                      <div className="max-h-44 overflow-y-auto pr-1 space-y-1 rounded-xl border border-slate-800 bg-slate-950/60 p-2">
-                        {flatChapters.map((c) => {
-                          const key = `${c.docId}_${c.chapIdx}`;
-                          const checked = selectedChapterKeys.includes(key);
-                          return (
-                            <label
-                              key={key}
-                              className={`flex items-start gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                                checked ? "bg-violet-900/30 border border-violet-700/40" : "hover:bg-slate-900/60 border border-transparent"
-                              }`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => {
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-72 overflow-y-auto pr-1">
+                        {flatChapters
+                          .filter(c => !chapterSearchFilter.trim() || c.name.toLowerCase().includes(chapterSearchFilter.toLowerCase()))
+                          .map((c) => {
+                            const key = `${c.docId}_${c.chapIdx}`;
+                            const checked = selectedChapterKeys.includes(key);
+                            return (
+                              <div
+                                key={key}
+                                onClick={() => {
                                   setSelectAllChapters(false);
                                   setSelectedChapterKeys(prev =>
                                     checked ? prev.filter(k => k !== key) : [...prev, key]
                                   );
                                 }}
-                                className="accent-violet-500 mt-0.5 shrink-0 cursor-pointer"
-                              />
-                              <span className="text-xs text-slate-300 leading-tight">
-                                {c.name}
-                                <span className="block text-[10px] text-slate-600">{c.docName} · pp. {c.startPage}–{c.endPage}</span>
-                              </span>
-                            </label>
-                          );
-                        })}
+                                className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex flex-col justify-between gap-2 ${
+                                  checked 
+                                    ? "bg-violet-950/40 border-violet-500/80 shadow-[0_0_15px_rgba(139,92,246,0.15)]" 
+                                    : "bg-slate-950/60 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/40"
+                                }`}
+                              >
+                                <div className="flex items-start gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {}} // Handled by parent container div onClick
+                                    className="accent-violet-500 mt-0.5 shrink-0 cursor-pointer w-4 h-4"
+                                  />
+                                  <div className="space-y-1">
+                                    <h4 className="text-xs font-bold text-white leading-tight">{c.name}</h4>
+                                    <p className="text-[10px] text-slate-400 line-clamp-2 leading-relaxed">{c.summary}</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center justify-between border-t border-slate-800/60 pt-2 text-[10px] text-slate-500">
+                                  <span className="truncate max-w-[140px]" title={c.docName}>{c.docName}</span>
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-900 border border-slate-800 font-mono text-slate-400 font-semibold">
+                                    pp. {c.startPage}–{c.endPage}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
                       </div>
                     )}
 
                     {selectedChapterKeys.length > 0 && (
-                      <p className="text-[10px] text-violet-400 mt-0.5">
-                        {selectAllChapters ? "All chapters selected" : `${selectedChapterKeys.length} chapter${selectedChapterKeys.length > 1 ? "s" : ""} selected`}
-                      </p>
+                      <div className="text-xs font-semibold text-violet-400 pt-1">
+                        ✓ {selectAllChapters ? `All ${flatChapters.length} chapters selected for exam paper` : `${selectedChapterKeys.length} of ${flatChapters.length} chapters selected`}
+                      </div>
                     )}
                   </div>
                 ) : (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Chapter / Topic Title</label>
+                  /* Manual Topic Entry Fields */
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-950/60 border border-slate-800">
+                    <div className="space-y-1 sm:col-span-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Custom Topic Title</label>
                       <input
                         type="text"
-                        placeholder="e.g. Chemical Equations"
+                        placeholder="e.g. Chemical Equations & Reactions"
                         value={customChapterName}
                         onChange={(e) => setCustomChapterName(e.target.value)}
-                        className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Start Page</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Start Page</label>
                       <input
                         type="number"
                         min={1}
                         value={customStartPage}
                         onChange={(e) => setCustomStartPage(Math.max(1, Number(e.target.value)))}
-                        className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">End Page</label>
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">End Page</label>
                       <input
                         type="number"
                         min={1}
                         value={customEndPage}
                         onChange={(e) => setCustomEndPage(Math.max(1, Number(e.target.value)))}
-                        className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                       />
                     </div>
-                  </>
-                )}
-
-                <div className="flex items-center gap-2 pt-5">
-                  <input
-                    type="checkbox"
-                    id="manualChapterOverride"
-                    checked={manualChapterOverride}
-                    onChange={(e) => setManualChapterOverride(e.target.checked)}
-                    className="accent-violet-600 cursor-pointer w-4 h-4"
-                  />
-                  <label htmlFor="manualChapterOverride" className="text-xs text-slate-400 font-semibold cursor-pointer">
-                    Input Topic manually
-                  </label>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Board Blueprint</label>
-                  <select
-                    value={selectedBoardType}
-                    onChange={(e) => setSelectedBoardType(e.target.value)}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
-                  >
-                    {BOARD_OPTION_GROUPS.map((group) => (
-                      <optgroup key={group.label} label={group.label}>
-                        {group.options.map((opt) => (
-                          <option key={opt.value} value={opt.value}>{opt.display}</option>
-                        ))}
-                      </optgroup>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedBoardType === "Custom" && (
-                  <div className="space-y-1 sm:col-span-2 md:col-span-1">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Custom Board Name</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. CBSE 2026, AP Chemistry"
-                      value={customBoardText}
-                      onChange={(e) => setCustomBoardText(e.target.value)}
-                      className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
-                    />
                   </div>
                 )}
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Grade Level</label>
-                  <select
-                    value={classGrade}
-                    onChange={(e) => setClassGrade(e.target.value)}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none cursor-pointer"
-                  >
-                    <option value="Grade 1">Grade 1</option>
-                    <option value="Grade 2">Grade 2</option>
-                    <option value="Grade 3">Grade 3</option>
-                    <option value="Grade 4">Grade 4</option>
-                    <option value="Grade 5">Grade 5</option>
-                    <option value="Grade 6">Grade 6</option>
-                    <option value="Grade 7">Grade 7</option>
-                    <option value="Grade 8">Grade 8</option>
-                    <option value="Grade 9">Grade 9</option>
-                    <option value="Grade 10">Grade 10</option>
-                    <option value="Grade 11">Grade 11</option>
-                    <option value="Grade 12">Grade 12</option>
-                    <option value="Undergraduate">College Level</option>
-                    <option value="Postgraduate">Postgraduate Level</option>
-                  </select>
-                </div>
               </div>
 
-              {/* Numeric Inputs for Question Limits */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-2 text-left">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Questions</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={totalQuestions}
-                    onChange={(e) => handleConfigOverride(setTotalQuestions, Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Total Marks</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={totalMarks}
-                    onChange={(e) => handleConfigOverride(setTotalMarks, Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Duration (Minutes)</label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={durationMinutes}
-                    onChange={(e) => handleConfigOverride(setDurationMinutes, Math.max(1, Number(e.target.value)))}
-                    className="w-full bg-slate-950/60 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
-                  />
-                </div>
-              </div>
-
-              {/* Override warning */}
-              {activeBlueprint && userOverriddenConfig && (
-                <div className="flex items-center gap-2 p-3 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-400 text-xs">
-                  <AlertCircle size={14} />
-                  <span>Custom configuration differs from the official {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} blueprint.</span>
-                </div>
-              )}
-
-              {/* Blueprint Preview Card OR Legacy Distribution Preview */}
-              {activeBlueprint ? (
-                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-left space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                      📋 {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} Blueprint · {activeBlueprint.totalTheoryMarks} marks · {activeBlueprint.totalQuestions} Qs
-                    </div>
-                    <span className="text-[9px] text-slate-600">Verified {activeBlueprint.lastVerified}</span>
+              {/* -------------------------------------------------------------
+                  STEP 2: EXAM BLUEPRINT & CUSTOM QUESTION BUILDER CARD
+                 ------------------------------------------------------------- */}
+              <div className="glass-panel p-6 rounded-3xl border border-slate-800 space-y-6 text-left">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                  <div>
+                    <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest px-2.5 py-1 bg-emerald-500/10 rounded-md border border-emerald-500/20">Step 2</span>
+                    <h3 className="text-lg font-bold text-white mt-1">Exam Blueprint & Marking Pattern</h3>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-xs">
-                    {activeBlueprint.sections.map((sec) => (
-                      <div key={sec.sectionLetter} className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                        {sec.sectionLetter}: <span className="font-bold text-violet-400">
-                          {sec.questionTypes.map((qt) => `${qt.count} ${qt.type}`).join(" + ")}
-                        </span> = {sec.totalMarks}m
+
+                  {/* Mode Switcher Tabs */}
+                  <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-2xl shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setCreationMode("official_blueprint")}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        creationMode === "official_blueprint"
+                          ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      🏛️ Board Blueprint Mode
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCreationMode("custom_builder")}
+                      className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        creationMode === "custom_builder"
+                          ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      ⚙️ Custom Question Builder
+                    </button>
+                  </div>
+                </div>
+
+                {/* MODE A: OFFICIAL BOARD BLUEPRINT */}
+                {creationMode === "official_blueprint" ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Board / Blueprint</label>
+                        <select
+                          value={selectedBoardType}
+                          onChange={(e) => setSelectedBoardType(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                        >
+                          {BOARD_OPTION_GROUPS.map((group) => (
+                            <optgroup key={group.label} label={group.label}>
+                              {group.options.map((opt) => (
+                                <option key={opt.value} value={opt.value}>{opt.display}</option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
                       </div>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-3 text-[10px] text-slate-500">
-                    {activeBlueprint.competencyBasedPercent && (
-                      <span>🎯 {activeBlueprint.competencyBasedPercent}% Competency-Based</span>
-                    )}
-                    {activeBlueprint.negativeMarking && (
-                      <span className="text-red-400">⚠ Negative Marking</span>
-                    )}
-                    <span>⏱ {activeBlueprint.durationMinutes} min</span>
-                    <span>📝 {activeBlueprint.examMode}</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/40 text-left">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
-                    📊 Auto-Calculated Marking Distribution (Legacy Mode)
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-xs">
-                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                      Section A: <span className="font-bold text-violet-400">{distribution.mcq}</span> MCQs (1m)
-                    </div>
-                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                      Section B: <span className="font-bold text-violet-400">{distribution.vsa}</span> Very Short Answer (2m)
-                    </div>
-                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                      Section C: <span className="font-bold text-violet-400">{distribution.sa}</span> Short Answer (3m)
-                    </div>
-                    <div className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                      Section D: <span className="font-bold text-violet-400">{distribution.la}</span> Long Answer (5m)
-                    </div>
-                  </div>
-                </div>
-              )}
 
-              {/* Confirm trigger */}
-              <button
-                onClick={handleGenerateExam}
-                disabled={
-                  !selectedSubject ||
-                  (!manualChapterOverride && !selectAllChapters && selectedChapterKeys.length === 0)
-                }
-                className="px-6 py-3 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white rounded-xl text-xs font-bold tracking-wide transition-colors cursor-pointer flex items-center justify-center gap-2 mx-auto disabled:opacity-50"
-              >
-                <Play size={14} /> Generate and Start Exam
-              </button>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Grade Level</label>
+                        <select
+                          value={classGrade}
+                          onChange={(e) => setClassGrade(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                        >
+                          <option value="Grade 6">Grade 6</option>
+                          <option value="Grade 7">Grade 7</option>
+                          <option value="Grade 8">Grade 8</option>
+                          <option value="Grade 9">Grade 9</option>
+                          <option value="Grade 10">Grade 10</option>
+                          <option value="Grade 11">Grade 11</option>
+                          <option value="Grade 12">Grade 12</option>
+                          <option value="Undergraduate">College Level</option>
+                          <option value="Postgraduate">Postgraduate Level</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Exam Title</label>
+                        <input
+                          type="text"
+                          value={examTitle}
+                          onChange={(e) => setExamTitle(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Active Board Blueprint Preview */}
+                    {activeBlueprint && (
+                      <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/40 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs font-bold text-white flex items-center gap-2">
+                            <span>📋 {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} Official Blueprint</span>
+                          </div>
+                          <span className="text-[10px] text-slate-500">Total Marks: {activeBlueprint.totalTheoryMarks}m · {activeBlueprint.totalQuestions} Questions</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 text-xs">
+                          {activeBlueprint.sections.map((sec) => (
+                            <div key={sec.sectionLetter} className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                              {sec.sectionLetter}: <span className="font-bold text-violet-400">
+                                {sec.questionTypes.map((qt) => `${qt.count} ${qt.type}`).join(" + ")}
+                              </span> = {sec.totalMarks}m
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* MODE B: CUSTOM QUESTION PAPER BUILDER */
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Test Paper Title</label>
+                        <input
+                          type="text"
+                          value={examTitle}
+                          onChange={(e) => setExamTitle(e.target.value)}
+                          placeholder="e.g. Unit 3 Custom Assessment"
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Grade Level</label>
+                        <select
+                          value={classGrade}
+                          onChange={(e) => setClassGrade(e.target.value)}
+                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                        >
+                          <option value="Grade 6">Grade 6</option>
+                          <option value="Grade 7">Grade 7</option>
+                          <option value="Grade 8">Grade 8</option>
+                          <option value="Grade 9">Grade 9</option>
+                          <option value="Grade 10">Grade 10</option>
+                          <option value="Grade 11">Grade 11</option>
+                          <option value="Grade 12">Grade 12</option>
+                          <option value="Undergraduate">College Level</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Interactive Question Types Builder Table */}
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
+                        <span>Select Question Types & Marking Scheme</span>
+                        <span>{activeCustomTypes.length} Types Selected</span>
+                      </div>
+
+                      <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/60">
+                        <table className="w-full text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-900/60 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                              <th className="p-3 w-10">Include</th>
+                              <th className="p-3">Question Type</th>
+                              <th className="p-3 w-32">No. of Questions</th>
+                              <th className="p-3 w-32">Marks per Question</th>
+                              <th className="p-3 w-28 text-right">Subtotal</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/60 text-xs">
+                            {customQuestionTypes.map((qType) => {
+                              const subtotal = (qType.count || 0) * (qType.marksPerQuestion || 0);
+                              return (
+                                <tr key={qType.id} className={qType.enabled ? "bg-slate-900/30" : "opacity-60"}>
+                                  <td className="p-3 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={qType.enabled}
+                                      onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, enabled: checked } : t));
+                                      }}
+                                      className="accent-emerald-500 cursor-pointer w-4 h-4"
+                                    />
+                                  </td>
+                                  <td className="p-3">
+                                    <p className="font-bold text-white">{qType.name}</p>
+                                    <p className="text-[10px] text-slate-500">{qType.description}</p>
+                                  </td>
+                                  <td className="p-3">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={50}
+                                      disabled={!qType.enabled}
+                                      value={qType.count}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, Number(e.target.value));
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: val } : t));
+                                      }}
+                                      className="w-20 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg p-1.5 text-center font-bold text-white outline-none disabled:opacity-30"
+                                    />
+                                  </td>
+                                  <td className="p-3">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={20}
+                                      disabled={!qType.enabled}
+                                      value={qType.marksPerQuestion}
+                                      onChange={(e) => {
+                                        const val = Math.max(1, Number(e.target.value));
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: val } : t));
+                                      }}
+                                      className="w-20 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg p-1.5 text-center font-bold text-white outline-none disabled:opacity-30"
+                                    />
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <span className={`font-mono font-bold ${qType.enabled ? "text-emerald-400" : "text-slate-600"}`}>
+                                      {qType.enabled ? `${subtotal} Marks` : "—"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
+                    {/* Live Calculation Summary Bar */}
+                    <div className="p-4 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                      <div className="flex items-center gap-6">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Questions</p>
+                          <p className="text-2xl font-black text-white">{customTotalQuestions}</p>
+                        </div>
+                        <div className="h-8 w-px bg-slate-800"></div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Marks</p>
+                          <p className="text-2xl font-black text-emerald-400">{customTotalMarks} Marks</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1 w-full sm:w-auto">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Test Duration (Minutes)</label>
+                        <input
+                          type="number"
+                          min={5}
+                          value={durationMinutes}
+                          onChange={(e) => setDurationMinutes(Math.max(5, Number(e.target.value)))}
+                          className="w-full sm:w-36 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl p-2 text-xs font-bold text-white outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Primary Action Button */}
+                <div className="pt-4 border-t border-slate-800/80">
+                  <button
+                    onClick={handleGenerateExam}
+                    disabled={
+                      !selectedSubject ||
+                      (!manualChapterOverride && selectedChapterKeys.length === 0 && !selectAllChapters) ||
+                      (manualChapterOverride && !customChapterName.trim()) ||
+                      (creationMode === "custom_builder" && activeCustomTypes.length === 0)
+                    }
+                    className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-emerald-600 hover:from-violet-500 hover:to-emerald-500 text-white font-bold text-sm shadow-xl shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <span>Generate Question Paper</span>
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </div>

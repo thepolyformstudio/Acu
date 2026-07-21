@@ -121,7 +121,8 @@ export default function PricingPage({ onBack, onUpgrade }: PricingPageProps) {
       }
 
       // 2. Create order server-side
-      const orderRes = await fetch("/api/payments/create-order", {
+      const apiBase = typeof window !== "undefined" && window.location.hostname === "localhost" ? "" : "https://ssracudex-963945863708.us-central1.run.app";
+      const orderRes = await fetch(`${apiBase}/api/payments/create-order`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -151,7 +152,8 @@ export default function PricingPage({ onBack, onUpgrade }: PricingPageProps) {
         onSuccess: async (payload) => {
           try {
             // 4. Verify signature server-side
-            const verifyRes = await fetch("/api/payments/verify", {
+            const apiBase = typeof window !== "undefined" && window.location.hostname === "localhost" ? "" : "https://ssracudex-963945863708.us-central1.run.app";
+            const verifyRes = await fetch(`${apiBase}/api/payments/verify`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({

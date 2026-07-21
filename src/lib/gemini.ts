@@ -147,7 +147,11 @@ async function callAI(request: {
 
   checkAndRecordRateLimit();
 
-  const res = await fetch("/api/ai/generate", {
+  const apiBase = typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? ""
+    : "https://ssracudex-963945863708.us-central1.run.app";
+
+  const res = await fetch(`${apiBase}/api/ai/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -159,10 +163,30 @@ async function callAI(request: {
   });
 
   if (!res.ok) {
-    const data = await res.json();
-    throw new Error(data.error || `AI request failed (${res.status})`);
+    let errorMessage = `AI request failed (${res.status})`;
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      try {
+        const data = await res.json();
+        errorMessage = data.error || errorMessage;
+      } catch (_) {}
+    } else {
+      const text = await res.text().catch(() => "");
+      if (res.status === 504 || text.includes("Gateway Timeout")) {
+        errorMessage = "The AI request timed out (limit: 60s). This usually happens when generating very large exam papers or study guides. Try selecting a smaller chapter, reducing the number of questions, or try again.";
+      } else if (res.status === 413 || text.includes("Too Large")) {
+        errorMessage = "The request payload is too large. If you are uploading a handwritten image, try compressing it or uploading a smaller file.";
+      } else {
+        errorMessage = `The server returned an error (Status ${res.status}). Please try again with a smaller chapter or fewer questions.`;
+      }
+    }
+    throw new Error(errorMessage);
   }
 
+  const contentType = res.headers.get("content-type");
+  if (!contentType || !contentType.includes("application/json")) {
+    throw new Error("The server returned an invalid response format. Please try again.");
+  }
   const data = await res.json();
   return data.text;
 }
@@ -231,6 +255,35 @@ JSON Schema:
 ]
 `;
 
+const FULL_DOCUMENT_CHAPTER_SCANNER_PROMPT = `
+You are a senior textbook structure analyzer.
+You are given a page-tagged stream of text extracted from a textbook, formatted as:
+[PAGE 1]
+...text...
+[PAGE 2]
+...text...
+
+Your task:
+1. Scan the text for major Chapter / Unit / Lesson title headings (e.g. "Chapter 1: Chemical Reactions", "Unit 2: Electricity", "1. Nutrition in Plants", etc.).
+2. For each detected chapter, identify:
+   - "name": Full official chapter title (e.g. "Chapter 1: Nutrition in Plants")
+   - "summary": 1-2 sentence summary of key concepts in this chapter based on its text
+   - "startPage": The physical 1-indexed page number ([PAGE X]) where this chapter title first appears
+   - "endPage": The physical 1-indexed page number ([PAGE Y]) right before the next chapter begins (or the final page of the document)
+3. If no clear multi-chapter headers exist (e.g. a single-topic document or article), return 1 entry covering pages 1 to the final page.
+4. Output strictly a valid JSON array matching the schema. No markdown fences or commentary outside JSON.
+
+JSON Schema:
+[
+  {
+    "name": "Chapter 1: Chemical Reactions and Equations",
+    "summary": "Details how to balance equations and reviews major reaction types.",
+    "startPage": 1,
+    "endPage": 14
+  }
+]
+`;
+
 // -------------------------------------------------------------
 // 0b. Image OCR Prompt (Gemini Vision — extracts text from images)
 // -------------------------------------------------------------
@@ -255,6 +308,69 @@ export interface BookMetadata {
   isbn?: string;
   publisher?: string;
   edition?: string;
+}
+
+export async function generateAutomatedChapterMap(
+  pages: { pageNumber: number; text: string }[],
+  docTitle?: string,
+  metadata?: BookMetadata
+): Promise<{ name: string; summary: string; startPage: number; endPage: number }[]> {
+  if (!pages || pages.length === 0) return [];
+  
+  if (pages.length === 1) {
+    return [{
+      name: docTitle || "Chapter 1",
+      summary: "Full document content.",
+      startPage: 1,
+      endPage: 1
+    }];
+  }
+
+  try {
+    const taggedStream = pages
+      .map(p => {
+        const snippet = p.text.length > 2500 ? p.text.substring(0, 2500) + "..." : p.text;
+        return `[PAGE ${p.pageNumber}]\n${snippet}`;
+      })
+      .join("\n\n");
+
+    let metaContext = "";
+    if (metadata && (metadata.name || metadata.publisher)) {
+      metaContext = `Book Context: "${metadata.name || 'Unknown'}" (${metadata.publisher || 'N/A'}). `;
+    }
+
+    const prompt = `Analyze this page-tagged document text and detect all chapter titles and physical page boundaries:\n${metaContext}\nTotal pages: ${pages.length}\n\n[DOCUMENT TEXT STREAM]\n${taggedStream}`;
+
+    const text = await callAI({
+      contents: [{ text: FULL_DOCUMENT_CHAPTER_SCANNER_PROMPT }, { text: prompt }],
+      temperature: 0.1,
+    });
+
+    const parsed = repairAndParse(text);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed.map((item: any, idx: number) => {
+        const start = Math.max(1, Math.min(pages.length, Number(item.startPage) || 1));
+        const nextItemStart = idx < parsed.length - 1 ? Number(parsed[idx + 1].startPage) || (start + 1) : pages.length + 1;
+        const end = Math.max(start, Math.min(pages.length, Number(item.endPage) || (nextItemStart - 1)));
+        return {
+          name: String(item.name || `Chapter ${idx + 1}`).trim(),
+          summary: String(item.summary || "Chapter content.").trim(),
+          startPage: start,
+          endPage: Math.min(pages.length, end)
+        };
+      });
+    }
+  } catch (err) {
+    console.warn("[Gemini] Automated chapter scan failed, using fallback heuristic:", err);
+  }
+
+  const fallbackTitle = docTitle || "Full Textbook Content";
+  return [{
+    name: fallbackTitle,
+    summary: "Full document content.",
+    startPage: 1,
+    endPage: pages.length
+  }];
 }
 
 export async function generateChapterMap(
@@ -413,6 +529,12 @@ JSON Schema:
 }
 `;
 
+export interface CustomQuestionSpec {
+  type: string;
+  count: number;
+  marksPerQuestion: number;
+}
+
 export async function generateExamPaper(
   sourceText: string,
   examTitle: string,
@@ -421,12 +543,21 @@ export async function generateExamPaper(
   distribution: { mcq: number; vsa: number; sa: number; la: number },
   totalMarks: number,
   subject: string = "",
-  blueprint: BoardBlueprint | null = null
+  blueprint: BoardBlueprint | null = null,
+  customQuestionSpecs: CustomQuestionSpec[] | null = null
 ): Promise<any> {
   const subjectRules = getSubjectSpecificInstructions(subject);
 
   let prompt: string;
-  if (blueprint) {
+  if (customQuestionSpecs && customQuestionSpecs.length > 0) {
+    const sectionsInstructions = customQuestionSpecs.map((spec, idx) => {
+      const letter = String.fromCharCode(65 + idx);
+      const sectionTotal = spec.count * spec.marksPerQuestion;
+      return `Section ${letter}: ${spec.count} ${spec.type} Question(s) (${spec.marksPerQuestion} Mark(s) each, Total: ${sectionTotal} Marks).`;
+    });
+    const totalQCount = customQuestionSpecs.reduce((a, b) => a + b.count, 0);
+    prompt = `Generate a custom question paper titled "${examTitle}" for ${grade}.\n\n[CUSTOM QUESTION PATTERN & MARKS ALLOCATION]\nFollow this EXACT structure:\n${sectionsInstructions.join("\n")}\n\nTotal Questions: ${totalQCount}, Total Marks: ${totalMarks}.\n\n${subjectRules}\n\n[CONTEXT PASSAGES]\n${sourceText}`;
+  } else if (blueprint) {
     const blueprintSections = blueprint.sections.map((s) => {
       const qtDescriptions = s.questionTypes.map((qt) => {
         let desc = `${qt.count} ${qt.type} × ${qt.marksPerQuestion}m`;
@@ -474,12 +605,33 @@ export async function gradeWrittenAnswer(
 ): Promise<any> {
   let userPrompt = `Evaluate this response:\n\n[QUESTION]\n${questionText}\nMarks Available: ${maxMarks}\n\n[MODEL ANSWER]\n${modelAnswer}\n\n[GRADING RUBRIC]\n${gradingRubric}\n\n[STUDENT ANSWER]\n${studentAnswer}`;
 
+  const contents: any[] = [];
+
   if (studentAnswerImageBase64) {
-    userPrompt += `\n\n[STUDENT ANSWER IMAGE]\nThe student submitted a handwritten image. Please transcribe and grade it.`;
+    // Separate MIME type and raw base64 data
+    const commaIdx = studentAnswerImageBase64.indexOf(",");
+    let mimeType = "image/jpeg";
+    let data = studentAnswerImageBase64;
+    if (commaIdx !== -1) {
+      const match = studentAnswerImageBase64.substring(0, commaIdx).match(/data:(image\/[a-zA-Z0-9.-]+);base64/);
+      if (match) mimeType = match[1];
+      data = studentAnswerImageBase64.substring(commaIdx + 1);
+    }
+
+    contents.push({
+      inlineData: {
+        mimeType,
+        data
+      }
+    });
+
+    userPrompt += `\n\n[STUDENT ANSWER IMAGE]\nThe student submitted a handwritten sheet image. Please transcribe the handwriting in the image first, and then grade it against the question, model answer, and rubric.`;
   }
 
+  contents.push({ text: userPrompt });
+
   const text = await callAI({
-    contents: [{ text: buildGraderSystemPrompt(gradingStandard) }, { text: userPrompt }],
+    contents: [{ text: buildGraderSystemPrompt(gradingStandard) }, ...contents],
     temperature: 0.1,
   });
   return repairAndParse(text);

@@ -38,7 +38,11 @@ export async function extractTextFromImage(
   const mimeType =
     file.type && file.type.startsWith("image/") ? file.type : "image/jpeg";
 
-  const response = await fetch("/api/ai/generate", {
+  const apiBase = typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? ""
+    : "https://ssracudex-963945863708.us-central1.run.app";
+
+  const response = await fetch(`${apiBase}/api/ai/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

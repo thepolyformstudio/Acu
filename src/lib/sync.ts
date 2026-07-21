@@ -47,6 +47,17 @@ async function idbGetAll(storeName: string): Promise<any[]> {
   });
 }
 
+async function idbGet(storeName: string, key: string): Promise<any> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(storeName, "readonly");
+    const store = tx.objectStore(storeName);
+    const req = store.get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
 async function idbPut(storeName: string, data: any): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
@@ -151,11 +162,18 @@ export async function migrateLocalStorageToFirestore(firestore: any): Promise<{ 
 export async function syncFromFirestore(firestore: any, profileId: string): Promise<void> {
   if (!isFirestoreAvailable()) return;
 
-  // Sync documents
+  // Sync documents - carefully preserve local pages if Firestore doc has empty pages
   try {
     const snap = await getDocs(collection(firestore, "profiles", profileId, "documents"));
     for (const d of snap.docs) {
-      await idbPut("documents", d.data());
+      const remoteData = d.data() as DocumentSource;
+      const localExisting = await getCachedDocument(remoteData.id);
+      
+      if (localExisting && localExisting.pages && localExisting.pages.length > 0 && (!remoteData.pages || remoteData.pages.length === 0)) {
+        await idbPut("documents", { ...remoteData, pages: localExisting.pages });
+      } else {
+        await idbPut("documents", remoteData);
+      }
     }
     trackUsage("firestoreRead");
   } catch (err) {
@@ -181,6 +199,14 @@ export async function getCachedDocuments(): Promise<DocumentSource[]> {
     return await idbGetAll("documents");
   } catch {
     return [];
+  }
+}
+
+export async function getCachedDocument(docId: string): Promise<DocumentSource | null> {
+  try {
+    return await idbGet("documents", docId);
+  } catch {
+    return null;
   }
 }
 

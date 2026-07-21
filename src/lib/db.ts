@@ -1,6 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as fbSignOut, onAuthStateChanged, User as FirebaseUser, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, getDocs, query, where, getCountFromServer, deleteDoc, writeBatch } from "firebase/firestore";
 import { migrateLocalStorageToFirestore, syncFromFirestore, getCachedDocuments, getCachedAttempts, cacheDocument, cacheAttempt, removeCachedDocument, removeCachedAttempt } from "./sync";
 
 export const INTERNAL_TESTER_EMAIL = "ejmultiverse@gmail.com";
@@ -74,6 +74,14 @@ export interface AppReview {
   createdAt: string;
 }
 
+export interface SystemErrorLog {
+  id: string;
+  userEmail: string;
+  context: string;
+  errorMessage: string;
+  timestamp: string;
+}
+
 // -------------------------------------------------------------
 // 1. Firebase Initialization with Dynamic Detection
 // -------------------------------------------------------------
@@ -114,6 +122,7 @@ const LOCAL_MOCK_ACTIVE_USER = "acu_mock_active_user";
 const LOCAL_MOCK_DOCUMENTS = "acu_mock_documents";
 const LOCAL_MOCK_ATTEMPTS = "acu_mock_attempts";
 const LOCAL_MOCK_REVIEWS = "acu_mock_reviews";
+const LOCAL_MOCK_ERRORS = "acu_mock_errors";
 
 const getMockData = (key: string, defaultValue: any) => {
   if (typeof window === "undefined") return defaultValue;
@@ -131,8 +140,10 @@ const saveMockData = (key: string, data: any) => {
 // -------------------------------------------------------------
 
 export function checkPremiumExpiry(profile: UserProfile): UserProfile {
-  if (isInternalTester(profile.email)) {
-    return { ...profile, is_premium: true, premium_expires_at: null };
+  const isInternal = isInternalTester(profile.email);
+  const isAdminEmail = profile.email.toLowerCase().trim() === 'admin@acu.com';
+  if (isInternal || isAdminEmail) {
+    return { ...profile, role: 'admin', is_premium: true, premium_expires_at: null };
   }
   if (profile.premium_expires_at && new Date() > new Date(profile.premium_expires_at)) {
     return { ...profile, is_premium: false, premium_expires_at: null };
@@ -161,16 +172,16 @@ export const dbService = {
 
   // Auth: SignUp
   async signUp(email: string, password: string, role: 'parent' | 'student'): Promise<UserProfile> {
+    const emailClean = email.toLowerCase().trim();
+    const isInternal = isInternalTester(emailClean);
+    const finalRole = (emailClean === 'admin@acu.com' || isInternal) ? 'admin' : role;
+
     if (isFirebaseConfigured && auth && firestore) {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       const uid = credential.user.uid;
       
-      // Determine premium auto-activation limit
       const currentPremiumCount = await this.getPremiumUserCount();
-      const isInternal = isInternalTester(email);
       const shouldBePremium = isInternal || currentPremiumCount < 100;
-      
-      const finalRole = email.toLowerCase().trim() === 'admin@acu.com' ? 'admin' : role;
 
       const profile: UserProfile = {
         id: uid,
@@ -185,25 +196,18 @@ export const dbService = {
       await setDoc(doc(firestore, "profiles", uid), profile);
       return profile;
     } else {
-      // Mock Storage SignUp
       const profiles = getMockData(LOCAL_MOCK_PROFILES, {});
-      const emailLower = email.toLowerCase().trim();
-      
-      // Verify email doesn't exist
-      if (Object.values(profiles).some((p: any) => p.email === emailLower)) {
+      if (Object.values(profiles).some((p: any) => p.email === emailClean)) {
         throw new Error("Email already registered in local mock db.");
       }
 
       const uid = "mock_user_" + Math.random().toString(36).substring(2, 9);
       const currentPremiumCount = await this.getPremiumUserCount();
-      const isInternal = isInternalTester(email);
       const shouldBePremium = isInternal || currentPremiumCount < 100;
-      
-      const finalRole = emailLower === 'admin@acu.com' ? 'admin' : role;
 
       const profile: UserProfile = {
         id: uid,
-        email: emailLower,
+        email: emailClean,
         role: finalRole,
         is_premium: shouldBePremium,
         coupon_applied: isInternal ? "INTERNAL_TESTER" : (shouldBePremium ? "BETA_EARLY_BIRD" : null),
@@ -214,7 +218,6 @@ export const dbService = {
       profiles[uid] = profile;
       saveMockData(LOCAL_MOCK_PROFILES, profiles);
       saveMockData(LOCAL_MOCK_ACTIVE_USER, profile);
-      
       return profile;
     }
   },
@@ -479,15 +482,65 @@ export const dbService = {
   // is faster and safer for privacy than uploading to databases.
   
   async saveDocumentSource(profileId: string, docSource: DocumentSource): Promise<void> {
+    // 1. Always cache full document (including pages) to IndexedDB locally
+    await cacheDocument(docSource);
+
     if (isFirebaseConfigured && firestore) {
-      await setDoc(doc(firestore, "profiles", profileId, "documents", docSource.id), docSource);
-      await cacheDocument(docSource);
+      try {
+        // 2. Save metadata-only shell to main documents collection (respecting 1MB limit)
+        const metadataOnlyDoc: DocumentSource = {
+          id: docSource.id,
+          name: docSource.name,
+          subject: docSource.subject,
+          pages: [], // Stripped for main doc metadata shell
+          chapterMap: docSource.chapterMap,
+          created_at: docSource.created_at
+        };
+        await setDoc(doc(firestore, "profiles", profileId, "documents", docSource.id), metadataOnlyDoc);
+
+        // 3. Save page chunks in subcollection: profiles/{profileId}/documents/{docId}/pages/{pageNumber}
+        if (docSource.pages && docSource.pages.length > 0) {
+          const pagesCollectionRef = collection(firestore, "profiles", profileId, "documents", docSource.id, "pages");
+          const batchSize = 450; // Max batch size is 500
+          for (let i = 0; i < docSource.pages.length; i += batchSize) {
+            const chunk = docSource.pages.slice(i, i + batchSize);
+            const batch = writeBatch(firestore);
+            for (const page of chunk) {
+              const pRef = doc(pagesCollectionRef, String(page.pageNumber));
+              batch.set(pRef, { pageNumber: page.pageNumber, text: page.text });
+            }
+            await batch.commit();
+          }
+        }
+      } catch (err) {
+        console.error("Firestore saveDocumentSource failed:", err);
+      }
     } else {
       const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
       const filtered = docs.filter((d: any) => d.id !== docSource.id);
       filtered.push(docSource);
       saveMockData(LOCAL_MOCK_DOCUMENTS, filtered);
     }
+  },
+
+  async getDocumentPagesFromFirestore(profileId: string, docId: string): Promise<{ pageNumber: number; text: string }[]> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const pagesRef = collection(firestore, "profiles", profileId, "documents", docId, "pages");
+        const snap = await getDocs(pagesRef);
+        const pages: { pageNumber: number; text: string }[] = [];
+        snap.forEach(d => {
+          const data = d.data();
+          if (data && typeof data.pageNumber === "number") {
+            pages.push({ pageNumber: data.pageNumber, text: data.text || "" });
+          }
+        });
+        return pages.sort((a, b) => a.pageNumber - b.pageNumber);
+      } catch (err) {
+        console.error("Firestore getDocumentPagesFromFirestore failed:", err);
+      }
+    }
+    return [];
   },
 
   async getDocumentSources(profileId: string): Promise<DocumentSource[]> {
@@ -507,10 +560,15 @@ export const dbService = {
       }
     }
     
-    // Merge IndexedDB docs that aren't in Firestore
+    // Hydrate Firestore docs with IndexedDB pages if local copy exists
     const cachedDocs = await getCachedDocuments();
     for (const cd of cachedDocs) {
-      if (!list.find(m => m.id === cd.id)) {
+      const existingIdx = list.findIndex(m => m.id === cd.id);
+      if (existingIdx !== -1) {
+        if ((!list[existingIdx].pages || list[existingIdx].pages.length === 0) && cd.pages && cd.pages.length > 0) {
+          list[existingIdx].pages = cd.pages;
+        }
+      } else {
         list.push(cd);
       }
     }
@@ -518,7 +576,12 @@ export const dbService = {
     // Merge legacy local storage docs
     const localDocs = getMockData(LOCAL_MOCK_DOCUMENTS, []) as DocumentSource[];
     for (const ld of localDocs) {
-      if (!list.find(m => m.id === ld.id)) {
+      const existingIdx = list.findIndex(m => m.id === ld.id);
+      if (existingIdx !== -1) {
+        if ((!list[existingIdx].pages || list[existingIdx].pages.length === 0) && ld.pages && ld.pages.length > 0) {
+          list[existingIdx].pages = ld.pages;
+        }
+      } else {
         list.push(ld);
       }
     }
@@ -527,7 +590,16 @@ export const dbService = {
 
   async deleteDocumentSource(profileId: string, docId: string): Promise<void> {
     if (isFirebaseConfigured && firestore) {
-      await deleteDoc(doc(firestore, "profiles", profileId, "documents", docId));
+      try {
+        const pagesRef = collection(firestore, "profiles", profileId, "documents", docId, "pages");
+        const pageSnap = await getDocs(pagesRef);
+        for (const pDoc of pageSnap.docs) {
+          await deleteDoc(pDoc.ref);
+        }
+        await deleteDoc(doc(firestore, "profiles", profileId, "documents", docId));
+      } catch (err) {
+        console.error("Firestore deleteDocumentSource failed:", err);
+      }
       await removeCachedDocument(docId);
     } else {
       const docs = getMockData(LOCAL_MOCK_DOCUMENTS, []);
@@ -736,6 +808,53 @@ export const dbService = {
       totalDocuments: documents.length,
       totalAttempts: attemptsCount
     };
+  },
+
+  // -------------------------------------------------------------
+  // System Error Telemetry
+  // -------------------------------------------------------------
+  async reportSystemError(errorReport: SystemErrorLog): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        await setDoc(doc(firestore, "system_errors", errorReport.id), errorReport);
+      } catch (e) {
+        console.error("Failed to report error to Firestore:", e);
+      }
+    } else {
+      const errors: SystemErrorLog[] = getMockData("acu_mock_errors", []);
+      errors.unshift(errorReport);
+      saveMockData("acu_mock_errors", errors.slice(0, 100));
+    }
+  },
+
+  async getSystemErrors(): Promise<SystemErrorLog[]> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = query(collection(firestore, "system_errors"));
+        const snap = await getDocs(q);
+        const list: SystemErrorLog[] = [];
+        snap.forEach(d => list.push(d.data() as SystemErrorLog));
+        return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      } catch (e) {
+        console.error("Firestore getSystemErrors failed:", e);
+        return [];
+      }
+    }
+    return getMockData("acu_mock_errors", []);
+  },
+
+  async clearSystemErrors(): Promise<void> {
+    if (isFirebaseConfigured && firestore) {
+      try {
+        const q = query(collection(firestore, "system_errors"));
+        const snap = await getDocs(q);
+        for (const d of snap.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (e) {
+        console.error("Firestore clearSystemErrors failed:", e);
+      }
+    }
+    saveMockData("acu_mock_errors", []);
   }
 };
-

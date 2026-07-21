@@ -11,7 +11,8 @@ import {
   generateMCQs,
   generateFlashcards
 } from "@/lib/gemini";
-import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn, loadSingleDocumentFromDrive } from "@/lib/googleDrive";
+import { saveNotesToDrive, loadNotesFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
+import { hydrateDocumentPayload } from "@/lib/docHydrator";
 import PptxGenJS from "pptxgenjs";
 import AcuCard from "./AcuCard";
 import { 
@@ -910,15 +911,13 @@ export default function AcuSlide({ documents, user }: AcuSlideProps) {
                 if (chap) {
                   let doc = documents.find(d => d.id === chap.docId) || null;
                   
-                  // If doc metadata is loaded but pages payload is empty, fetch from Drive
                   if (doc && (!doc.pages || doc.pages.length === 0)) {
                     setLoading(true);
-                    setLoadingMessage("Fetching document payload from Google Drive...");
-                    const fullDoc = await loadSingleDocumentFromDrive(doc.id);
-                    if (fullDoc) {
-                      doc = { ...doc, pages: fullDoc.pages };
-                    } else {
-                      alert("Could not load document payload from Google Drive. Please ensure it is synced.");
+                    setLoadingMessage(`Loading payload for "${doc.name}"...`);
+                    try {
+                      doc = await hydrateDocumentPayload(doc, user?.id || "anonymous");
+                    } catch (hErr: any) {
+                      alert(hErr.message || "Could not load document payload.");
                     }
                     setLoading(false);
                     setLoadingMessage("");

@@ -5,7 +5,7 @@ import { dbService, UserProfile, DocumentSource } from "@/lib/db";
 import { extractTextPageByPage } from "@/lib/pdfParser";
 import { extractWordText } from "@/lib/docxParser";
 import { extractTextFromImage } from "@/lib/imageOcrParser";
-import { generateChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
+import { generateChapterMap, generateAutomatedChapterMap, extractChapterTitle, BookMetadata } from "@/lib/gemini";
 import { safeError, logError } from "@/lib/errors";
 import { validateFile, validateImageFile, validateChapterTitle, validateCustomSubject } from "@/lib/validation";
 import {
@@ -163,11 +163,18 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
             endPage: pages.length
           }];
         } else {
-          // full_textbook mode, or any image — always go through manual chapter mapping
-          setManualMappingQueue({ file, pages });
-          setUploading(false);
-          setStatusMessage("");
-          return; // Wait for user to manually map
+          setStatusMessage(`[File ${fIdx + 1}/${files.length}] Gemini is scanning document for chapters & topics...`);
+          try {
+            chapterMap = await generateAutomatedChapterMap(pages, stagedItem.title);
+          } catch (cErr) {
+            console.warn("[AcuLibrary] Automated chapter scan error, falling back:", cErr);
+            chapterMap = [{
+              name: stagedItem.title || file.name.replace(/\.[^/.]+$/, ""),
+              summary: "Full document",
+              startPage: 1,
+              endPage: pages.length
+            }];
+          }
         }
 
         const newDoc: DocumentSource = {

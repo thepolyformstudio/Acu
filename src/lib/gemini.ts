@@ -264,22 +264,19 @@ You are given a page-tagged stream of text extracted from a textbook, formatted 
 ...text...
 
 Your task:
-1. Scan the text for major Chapter / Unit / Lesson title headings (e.g. "Chapter 1: Chemical Reactions", "Unit 2: Electricity", "1. Nutrition in Plants", etc.).
-2. For each detected chapter, identify:
-   - "name": Full official chapter title (e.g. "Chapter 1: Nutrition in Plants")
-   - "summary": 1-2 sentence summary of key concepts in this chapter based on its text
-   - "startPage": The physical 1-indexed page number ([PAGE X]) where this chapter title first appears
-   - "endPage": The physical 1-indexed page number ([PAGE Y]) right before the next chapter begins (or the final page of the document)
-3. If no clear multi-chapter headers exist (e.g. a single-topic document or article), return 1 entry covering pages 1 to the final page.
-4. Output strictly a valid JSON array matching the schema. No markdown fences or commentary outside JSON.
+1. Scan the text on Page 1 and Page 2 for the official Chapter Title / Lesson Name (e.g. "Chapter 7: Outcomes of Democracy", "Sectors of the Indian Economy", "Power Sharing", etc.).
+2. CRITICAL RULE: NEVER use raw generic file names or placeholders like "SS Chapter 7", "SS Chapter 2", "Chapter 1", "Untitled". ALWAYS extract the actual human-readable textbook chapter name printed at the top of the lesson text.
+3. Provide a rich 2-sentence concept summary of the core topics and learning objectives covered in this chapter.
+4. If the document contains multiple chapters, detect all chapter boundaries and page ranges. If it is a single chapter file, return 1 entry covering page 1 to the last page with the full extracted chapter title.
+5. Output strictly a valid JSON array matching the schema. No markdown fences or commentary outside JSON.
 
 JSON Schema:
 [
   {
-    "name": "Chapter 1: Chemical Reactions and Equations",
-    "summary": "Details how to balance equations and reviews major reaction types.",
+    "name": "Chapter 7: Outcomes of Democracy",
+    "summary": "Examines how democratic governments are accountable, responsive, and legitimate, evaluating economic growth, social diversity, and citizen dignity.",
     "startPage": 1,
-    "endPage": 14
+    "endPage": 24
   }
 ]
 `;

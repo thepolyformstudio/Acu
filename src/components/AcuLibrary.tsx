@@ -16,7 +16,7 @@ import { hydrateDocumentPayload } from "@/lib/docHydrator";
 import { 
   Upload, FileText, Trash2, FolderOpen,
   RefreshCw, BookOpen, ShieldAlert,
-  ChevronRight, ChevronDown, Plus, X, Sparkles,
+  ChevronRight, ChevronDown, Plus, X, Sparkles, Edit3,
   Cloud, CloudOff, CheckCircle, AlertTriangle, WifiOff
 } from "lucide-react";
 
@@ -43,6 +43,15 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
   const [manualChapters, setManualChapters] = useState<{name: string, startPage: number, endPage: number}[]>([
     {name: "", startPage: 1, endPage: 1}
   ]);
+
+  const [editingChapter, setEditingChapter] = useState<{
+    docId: string;
+    cIdx: number;
+    name: string;
+    summary: string;
+    startPage: number;
+    endPage: number;
+  } | null>(null);
 
   // Subject selectors
   const [selectedSubjectType, setSelectedSubjectType] = useState("Science");
@@ -320,6 +329,33 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
       setUploading(false);
       setStatusMessage("");
     }
+  };
+
+  const handleSaveChapterEdit = async () => {
+    if (!editingChapter) return;
+    const targetDoc = documents.find(d => d.id === editingChapter.docId);
+    if (!targetDoc) return;
+
+    const updatedChapterMap = [...(targetDoc.chapterMap || [])];
+    if (updatedChapterMap[editingChapter.cIdx]) {
+      updatedChapterMap[editingChapter.cIdx] = {
+        ...updatedChapterMap[editingChapter.cIdx],
+        name: editingChapter.name.trim() || updatedChapterMap[editingChapter.cIdx].name,
+        summary: editingChapter.summary.trim() || updatedChapterMap[editingChapter.cIdx].summary,
+        startPage: Math.max(1, Number(editingChapter.startPage) || 1),
+        endPage: Math.max(1, Number(editingChapter.endPage) || 1),
+      };
+    }
+
+    const updatedDoc: DocumentSource = {
+      ...targetDoc,
+      name: editingChapter.cIdx === 0 ? editingChapter.name.trim() : targetDoc.name,
+      chapterMap: updatedChapterMap
+    };
+
+    await dbService.saveDocumentSource(user?.id || "anonymous", updatedDoc);
+    setEditingChapter(null);
+    onRefresh();
   };
 
   // Group documents by their subject
@@ -635,8 +671,8 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                             ...chap,
                           }))
                         ).map((chap) => (
-                          <div key={`${chap.docId}_${chap.cIdx}`} className="p-3 rounded-lg bg-slate-950/70 border border-slate-900/50 flex items-start justify-between gap-4 text-left">
-                            <div className="space-y-1 min-w-0">
+                          <div key={`${chap.docId}_${chap.cIdx}`} className="p-3 rounded-lg bg-slate-950/70 border border-slate-900/50 flex items-start justify-between gap-4 text-left group">
+                            <div className="space-y-1 min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-950/40 border border-violet-500/20 text-violet-400 font-semibold uppercase tracking-wider shrink-0">
                                   Pages {chap.startPage}–{chap.endPage}
@@ -646,6 +682,21 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                               <h5 className="text-xs font-bold text-white">{chap.name}</h5>
                               <p className="text-[10px] text-slate-500 line-clamp-2">{chap.summary}</p>
                             </div>
+
+                            <button
+                              onClick={() => setEditingChapter({
+                                docId: chap.docId,
+                                cIdx: chap.cIdx,
+                                name: chap.name,
+                                summary: chap.summary,
+                                startPage: chap.startPage,
+                                endPage: chap.endPage
+                              })}
+                              title="Edit chapter title, summary, and page numbers"
+                              className="p-1.5 rounded bg-slate-900 hover:bg-violet-950/60 border border-slate-800 hover:border-violet-500/40 text-slate-500 hover:text-violet-300 transition-all cursor-pointer shrink-0"
+                            >
+                              <Edit3 size={12} />
+                            </button>
                           </div>
                         ))}
                         {totalChaps === 0 && (
@@ -825,6 +876,96 @@ export default function AcuLibrary({ user, documents, onRefresh }: AcuLibraryPro
                   <Upload size={14} /> Process & Extract
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inline Edit Chapter Title & Summary Modal */}
+      {editingChapter && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl space-y-4 p-6">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Edit3 size={16} className="text-violet-400" />
+                Edit Chapter Details
+              </h3>
+              <button 
+                onClick={() => setEditingChapter(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-left">
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  Official Chapter Title
+                </label>
+                <input
+                  type="text"
+                  value={editingChapter.name}
+                  onChange={(e) => setEditingChapter({ ...editingChapter, name: e.target.value })}
+                  placeholder="e.g. Chapter 7: Outcomes of Democracy"
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    Start Page
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editingChapter.startPage}
+                    onChange={(e) => setEditingChapter({ ...editingChapter, startPage: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                    End Page
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={editingChapter.endPage}
+                    onChange={(e) => setEditingChapter({ ...editingChapter, endPage: Math.max(1, parseInt(e.target.value) || 1) })}
+                    className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">
+                  Concept Summary
+                </label>
+                <textarea
+                  rows={3}
+                  value={editingChapter.summary}
+                  onChange={(e) => setEditingChapter({ ...editingChapter, summary: e.target.value })}
+                  placeholder="Enter 1-2 sentence concept summary..."
+                  className="w-full bg-slate-950 border border-slate-800 focus:border-violet-500 rounded-xl px-3 py-2 text-xs text-white outline-none resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setEditingChapter(null)}
+                className="px-4 py-2 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveChapterEdit}
+                className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-semibold cursor-pointer shadow-lg shadow-violet-600/20"
+              >
+                Save Changes
+              </button>
             </div>
           </div>
         </div>

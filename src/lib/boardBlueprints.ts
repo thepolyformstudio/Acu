@@ -1959,6 +1959,215 @@ const NDA_BLUEPRINT: BoardBlueprint = {
 };
 
 // -----------------------------------------------------------------------------
+// Language & International Exam Blueprints (IELTS Cambridge Standards)
+// -----------------------------------------------------------------------------
+
+export const IELTS_ACADEMIC_BLUEPRINT: BoardBlueprint = {
+  boardId: "IELTS Academic",
+  boardName: "IELTS Academic Test (Cambridge Standard)",
+  boardAbbreviation: "IELTS Acad",
+  category: "entrance",
+  academicYear: "2026",
+  totalTheoryMarks: 40,
+  totalQuestions: 42,
+  durationMinutes: 120,
+  sections: [
+    {
+      sectionLetter: "A",
+      sectionTitle: "Reading Module (Passages & Comprehension)",
+      questionTypes: [
+        { type: "True-False", marksPerQuestion: 1, count: 14, instructions: "Identify if statement is True, False, or Not Given based on passage." },
+        { type: "MCQ", marksPerQuestion: 1, count: 13, instructions: "Select the correct option A, B, C or D." },
+        { type: "VSA", marksPerQuestion: 1, count: 13, instructions: "Complete notes with NO MORE THAN THREE WORDS from the passage." },
+      ],
+      totalMarks: 40,
+      instructions: "3 Academic Reading Passages. 40 items total.",
+    },
+    {
+      sectionLetter: "B",
+      sectionTitle: "Writing Module (Task 1 Report & Task 2 Essay)",
+      questionTypes: [
+        { type: "SA", marksPerQuestion: 3, count: 1, instructions: "Task 1: Describe data graph, table or chart in at least 150 words." },
+        { type: "LA", marksPerQuestion: 6, count: 1, instructions: "Task 2: Write a formal discursive essay in at least 250 words." },
+      ],
+      totalMarks: 9,
+      instructions: "Target word counts must be met. Evaluated on 4 IELTS Band Criteria.",
+    },
+  ],
+  gradeLevels: ["Undergraduate", "Postgraduate"],
+  negativeMarking: false,
+  examMode: "both",
+  gradingStandard: "IELTS Official Band 9 Descriptor (Task Achievement, Coherence & Cohesion, Lexical Resource, Grammatical Accuracy)",
+  officialSource: "https://www.ielts.org",
+  lastVerified: "2026-07-22",
+};
+
+export const IELTS_GENERAL_BLUEPRINT: BoardBlueprint = {
+  boardId: "IELTS General",
+  boardName: "IELTS General Training Test (Cambridge Standard)",
+  boardAbbreviation: "IELTS GT",
+  category: "entrance",
+  academicYear: "2026",
+  totalTheoryMarks: 40,
+  totalQuestions: 42,
+  durationMinutes: 120,
+  sections: [
+    {
+      sectionLetter: "A",
+      sectionTitle: "General Training Reading Module",
+      questionTypes: [
+        { type: "True-False", marksPerQuestion: 1, count: 14, instructions: "Identify if statement is True, False, or Not Given based on general notices." },
+        { type: "MCQ", marksPerQuestion: 1, count: 13, instructions: "Select the correct option A, B, C or D." },
+        { type: "VSA", marksPerQuestion: 1, count: 13, instructions: "Complete workplace/general notes." },
+      ],
+      totalMarks: 40,
+      instructions: "3 General Training Reading Passages.",
+    },
+    {
+      sectionLetter: "B",
+      sectionTitle: "General Training Writing Module",
+      questionTypes: [
+        { type: "SA", marksPerQuestion: 3, count: 1, instructions: "Task 1: Write a formal or personal letter in at least 150 words." },
+        { type: "LA", marksPerQuestion: 6, count: 1, instructions: "Task 2: Write a general essay in at least 250 words." },
+      ],
+      totalMarks: 9,
+      instructions: "Target word counts must be met.",
+    },
+  ],
+  gradeLevels: ["Undergraduate", "Postgraduate"],
+  negativeMarking: false,
+  examMode: "both",
+  gradingStandard: "IELTS Official Band 9 Descriptor (Task Achievement, Coherence & Cohesion, Lexical Resource, Grammatical Accuracy)",
+  officialSource: "https://www.ielts.org",
+  lastVerified: "2026-07-22",
+};
+
+/**
+ * Dynamically builds a targeted IELTS Board Blueprint based on the selected Track & Modules.
+ */
+export function buildIeltsModuleBlueprint(
+  track: "Academic" | "General",
+  modules: { reading?: boolean; writing?: boolean; listening?: boolean; speaking?: boolean }
+): { blueprint: BoardBlueprint; durationMinutes: number; totalMarks: number; totalQuestions: number } {
+  const sections: BoardBlueprint["sections"] = [];
+  let duration = 0;
+  let totalMarks = 0;
+  let totalQuestions = 0;
+
+  // 1. READING MODULE
+  if (modules.reading) {
+    duration += 60;
+    totalMarks += 40;
+    totalQuestions += 40;
+    sections.push({
+      sectionLetter: String.fromCharCode(65 + sections.length),
+      sectionTitle: `IELTS ${track} Reading Module (3 Passages)`,
+      questionTypes: [
+        { type: "True-False", marksPerQuestion: 1, count: 14, instructions: "Identify statement as True, False, or Not Given based on passage." },
+        { type: "MCQ", marksPerQuestion: 1, count: 13, instructions: "Select the correct option A, B, C or D." },
+        { type: "VSA", marksPerQuestion: 1, count: 13, instructions: "Complete summary/notes with NO MORE THAN THREE WORDS." },
+      ],
+      totalMarks: 40,
+      instructions: track === "Academic"
+        ? "3 Academic Reading Passages (13-14 questions per passage, 40 total). Target time: 60 minutes."
+        : "3 General Training Reading Passages (Section 1: Everyday English, Section 2: Workplace, Section 3: General Text). Target time: 60 minutes.",
+    });
+  }
+
+  // 2. WRITING MODULE
+  if (modules.writing) {
+    duration += 60;
+    totalMarks += 9;
+    totalQuestions += 2;
+    sections.push({
+      sectionLetter: String.fromCharCode(65 + sections.length),
+      sectionTitle: `IELTS ${track} Writing Module (Task 1 & Task 2)`,
+      questionTypes: [
+        {
+          type: "SA",
+          marksPerQuestion: 3,
+          count: 1,
+          instructions: track === "Academic"
+            ? "Task 1 (Academic): Describe and summarize a chart, graph, table, or process diagram in at least 150 words (20 mins)."
+            : "Task 1 (General): Write a formal, semi-formal, or personal letter explaining a situation in at least 150 words (20 mins).",
+        },
+        {
+          type: "LA",
+          marksPerQuestion: 6,
+          count: 1,
+          instructions: "Task 2 (Discursive Essay): Present a reasoned argument or solution to a problem in at least 250 words (40 mins).",
+        },
+      ],
+      totalMarks: 9,
+      instructions: "Target word counts must be met. Evaluated on Task Response, Coherence/Cohesion, Lexical Resource, and Grammar (Band 9 Scale).",
+    });
+  }
+
+  // 3. LISTENING MODULE
+  if (modules.listening) {
+    duration += 40;
+    totalMarks += 40;
+    totalQuestions += 40;
+    sections.push({
+      sectionLetter: String.fromCharCode(65 + sections.length),
+      sectionTitle: "IELTS Listening Module (4 Audio Sections)",
+      questionTypes: [
+        { type: "VSA", marksPerQuestion: 1, count: 15, instructions: "Fill in form/table blanks based on audio transcript." },
+        { type: "MCQ", marksPerQuestion: 1, count: 15, instructions: "Select multiple choice options A, B, or C." },
+        { type: "VSA", marksPerQuestion: 1, count: 10, instructions: "Answer short questions based on audio dialogues." },
+      ],
+      totalMarks: 40,
+      instructions: "4 Audio Sections (Social Dialogue, Monologue, Academic Discussion, Lecture). Include transcripts for reading/practice. 40 mins.",
+    });
+  }
+
+  // 4. SPEAKING MODULE
+  if (modules.speaking) {
+    duration += 15;
+    totalMarks += 9;
+    totalQuestions += 3;
+    sections.push({
+      sectionLetter: String.fromCharCode(65 + sections.length),
+      sectionTitle: "IELTS Speaking Module (3 Parts)",
+      questionTypes: [
+        { type: "VSA", marksPerQuestion: 2, count: 1, instructions: "Part 1: Personal Introduction & General Interview Questions (4-5 mins)." },
+        { type: "SA", marksPerQuestion: 3, count: 1, instructions: "Part 2: Individual Cue Card Topic Prompt with 1 min prep and 2 min response structure." },
+        { type: "LA", marksPerQuestion: 4, count: 1, instructions: "Part 3: Two-way Analytical Discussion on abstract issues related to Part 2 (4-5 mins)." },
+      ],
+      totalMarks: 9,
+      instructions: "Evaluated on Fluency/Coherence, Lexical Resource, Grammatical Range/Accuracy, and Pronunciation (Band 9 Scale).",
+    });
+  }
+
+  // Fallback if no module selected
+  if (sections.length === 0) {
+    duration = 60;
+    totalMarks = 40;
+    totalQuestions = 40;
+  }
+
+  const blueprint: BoardBlueprint = {
+    boardId: `IELTS ${track}`,
+    boardName: `IELTS ${track} Standard Test`,
+    boardAbbreviation: `IELTS ${track.substring(0, 4)}`,
+    category: "entrance",
+    academicYear: "2026",
+    totalTheoryMarks: totalMarks,
+    totalQuestions,
+    durationMinutes: duration,
+    sections,
+    gradeLevels: ["Undergraduate", "Postgraduate"],
+    negativeMarking: false,
+    examMode: "both",
+    gradingStandard: "IELTS Official Band 9 Descriptor (Task Achievement, Coherence & Cohesion, Lexical Resource, Grammatical Accuracy)",
+    officialSource: "https://www.ielts.org",
+    lastVerified: "2026-07-22",
+  };
+
+  return { blueprint, durationMinutes: duration, totalMarks, totalQuestions };
+}
+
+// -----------------------------------------------------------------------------
 // Master Registry & Lookup
 // -----------------------------------------------------------------------------
 
@@ -2000,6 +2209,9 @@ export const ALL_BLUEPRINTS: BoardBlueprint[] = [
   SSC_CGL_BLUEPRINT,
   BANK_PO_BLUEPRINT,
   NDA_BLUEPRINT,
+  // Language & International
+  IELTS_ACADEMIC_BLUEPRINT,
+  IELTS_GENERAL_BLUEPRINT,
 ];
 
 /** Map for O(1) lookup by boardId */
@@ -2076,6 +2288,13 @@ export const BOARD_OPTION_GROUPS: BoardOptionGroup[] = [
       { value: "SSC CGL", display: "SSC CGL" },
       { value: "Bank PO", display: "Bank PO (IBPS)" },
       { value: "NDA", display: "NDA Entrance" },
+    ],
+  },
+  {
+    label: "Language & International Exams",
+    options: [
+      { value: "IELTS Academic", display: "IELTS Academic" },
+      { value: "IELTS General", display: "IELTS General Training" },
     ],
   },
   {

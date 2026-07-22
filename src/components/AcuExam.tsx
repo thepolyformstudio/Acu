@@ -3,11 +3,12 @@
 import React, { useState, useEffect } from "react";
 import { DocumentSource, ExamAttempt, dbService, UserProfile } from "@/lib/db";
 import { generateExamPaper, gradeWrittenAnswer } from "@/lib/gemini";
-import { getBlueprintForBoard, BOARD_OPTION_GROUPS, BoardBlueprint } from "@/lib/boardBlueprints";
+import { getBlueprintForBoard, buildIeltsModuleBlueprint, BOARD_OPTION_GROUPS, BoardBlueprint } from "@/lib/boardBlueprints";
+import { CAMBRIDGE_19_BENCHMARK_PAPER } from "@/lib/ieltsCorpus";
 import { saveExamAttemptsToDrive, loadExamAttemptsFromDrive, isDriveSignedIn } from "@/lib/googleDrive";
 import { hydrateDocumentPayload } from "@/lib/docHydrator";
 import { 
-  Play, FileText, CheckCircle, RefreshCw, BarChart2, 
+  Play, Pause, Mic, MicOff, Volume2, FileText, CheckCircle, RefreshCw, BarChart2, 
   ChevronRight, Award, Timer, AlertCircle, Send, Check, Trash2, Download
 } from "lucide-react";
 import { 
@@ -97,8 +98,9 @@ export default function AcuExam({
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
 
-  // Build unique subject list from all documents
-  const subjectsList = [...new Set(documents.map(d => d.subject || "General"))];
+  // Build unique subject list from all documents plus global default subjects (e.g. IELTS)
+  const DEFAULT_GLOBAL_SUBJECTS = ["IELTS (English Proficiency)"];
+  const subjectsList = [...new Set([...DEFAULT_GLOBAL_SUBJECTS, ...documents.map(d => d.subject || "General")])];
 
   // Flatten all chapters under the selected subject across all documents
   type FlatChapter = { docId: string; chapIdx: number; name: string; summary: string; startPage: number; endPage: number; docName: string; docPageCount: number };
@@ -124,7 +126,7 @@ export default function AcuExam({
   const [selectedBoardType, setSelectedBoardType] = useState("CBSE");
   const [customBoardText, setCustomBoardText] = useState("");
   const [classGrade, setClassGrade] = useState("Grade 10");
-  const [durationMinutes, setDurationMinutes] = useState(30);
+  const [durationMinutes, setDurationMinutes] = useState<number | string>(30);
   const [totalQuestions, setTotalQuestions] = useState(10);
   const [totalMarks, setTotalMarks] = useState(25);
   
@@ -159,8 +161,23 @@ export default function AcuExam({
   // Manual chapter override state
   const [manualChapterOverride, setManualChapterOverride] = useState(false);
   const [customChapterName, setCustomChapterName] = useState("");
-  const [customStartPage, setCustomStartPage] = useState(1);
-  const [customEndPage, setCustomEndPage] = useState(10);
+  const [customStartPage, setCustomStartPage] = useState<number | string>(1);
+  const [customEndPage, setCustomEndPage] = useState<number | string>(10);
+
+  // IELTS Exam Configurator State
+  const [ieltsTrack, setIeltsTrack] = useState<"Academic" | "General">("Academic");
+  const [ieltsSourceMode, setIeltsSourceMode] = useState<"ai_generator" | "benchmark_corpus">("ai_generator");
+  const [ieltsModules, setIeltsModules] = useState<{ [key: string]: boolean }>({
+    reading: true,
+    writing: true,
+    listening: true,
+    speaking: true,
+  });
+
+  // Audio Playback & Mic STT State
+  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [activeAudioQuestionId, setActiveAudioQuestionId] = useState<string | null>(null);
+  const [isRecordingMic, setIsRecordingMic] = useState<string | null>(null);
 
   // Restructured Exam Configurator & Custom Builder State
   const [chapterSearchFilter, setChapterSearchFilter] = useState("");
@@ -171,8 +188,8 @@ export default function AcuExam({
     name: string;
     description: string;
     enabled: boolean;
-    count: number;
-    marksPerQuestion: number;
+    count: number | string;
+    marksPerQuestion: number | string;
   }
 
   const [customQuestionTypes, setCustomQuestionTypes] = useState<CustomQuestionTypeState[]>([
@@ -185,9 +202,9 @@ export default function AcuExam({
     { id: "case_study", name: "Case Study / Assertion-Reasoning", description: "Real-world context & logical reasoning", enabled: false, count: 1, marksPerQuestion: 4 },
   ]);
 
-  const activeCustomTypes = customQuestionTypes.filter(t => t.enabled && t.count > 0);
-  const customTotalQuestions = activeCustomTypes.reduce((acc, t) => acc + Number(t.count || 0), 0);
-  const customTotalMarks = activeCustomTypes.reduce((acc, t) => acc + (Number(t.count || 0) * Number(t.marksPerQuestion || 0)), 0);
+  const activeCustomTypes = customQuestionTypes.filter(t => t.enabled && (Number(t.count) || 0) > 0);
+  const customTotalQuestions = activeCustomTypes.reduce((acc, t) => acc + (parseInt(String(t.count), 10) || 0), 0);
+  const customTotalMarks = activeCustomTypes.reduce((acc, t) => acc + ((parseInt(String(t.count), 10) || 0) * (parseInt(String(t.marksPerQuestion), 10) || 0)), 0);
 
   // Running Exam State
   const [activeExam, setActiveExam] = useState<any | null>(null);
@@ -225,6 +242,106 @@ export default function AcuExam({
     }
   }, [totalMarks, totalQuestions, activeBoard, activeBlueprint]);
 
+  // Dynamically update IELTS test duration based on selected Track & Modules
+  useEffect(() => {
+    if (selectedSubject && selectedSubject.includes("IELTS")) {
+      if (ieltsSourceMode === "benchmark_corpus") {
+        setDurationMinutes(120);
+      } else {
+        const { durationMinutes: targetDuration } = buildIeltsModuleBlueprint(ieltsTrack, ieltsModules);
+        setDurationMinutes(targetDuration);
+      }
+    }
+  }, [selectedSubject, ieltsTrack, ieltsModules, ieltsSourceMode]);
+
+  // Web Speech Synthesis Audio Handler for Listening Passages
+  const handleToggleListeningAudio = (qId: string, textToSpeak: string) => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+      alert("Audio playback is not supported on this browser.");
+      return;
+    }
+
+    if (isPlayingAudio && activeAudioQuestionId === qId) {
+      window.speechSynthesis.cancel();
+      setIsPlayingAudio(false);
+      setActiveAudioQuestionId(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = textToSpeak.replace(/(Audio Transcript|Section|Instructions|Question[\s\S]*?$)/gi, "").trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText || textToSpeak);
+    utterance.rate = 0.92; // Natural, clear IELTS listening pace
+    utterance.pitch = 1.0;
+    
+    const voices = window.speechSynthesis.getVoices();
+    const preferredVoice = voices.find(v => v.lang.includes("en-GB") || v.lang.includes("en-AU") || v.lang.includes("en"));
+    if (preferredVoice) utterance.voice = preferredVoice;
+
+    utterance.onend = () => {
+      setIsPlayingAudio(false);
+      setActiveAudioQuestionId(null);
+    };
+    utterance.onerror = () => {
+      setIsPlayingAudio(false);
+      setActiveAudioQuestionId(null);
+    };
+
+    window.speechSynthesis.speak(utterance);
+    setIsPlayingAudio(true);
+    setActiveAudioQuestionId(qId);
+  };
+
+  // Web Speech Recognition (Mic STT) Handler for Speaking Responses
+  const handleToggleMicRecording = (qId: string) => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Speech-to-Text recording requires Google Chrome or Microsoft Edge browser.");
+      return;
+    }
+
+    if (isRecordingMic === qId) {
+      setIsRecordingMic(null);
+      return;
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      recognition.onresult = (event: any) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setStudentAnswers(prev => ({
+          ...prev,
+          [qId]: (prev[qId] ? prev[qId] + " " : "") + transcript
+        }));
+      };
+
+      recognition.onerror = (err: any) => {
+        console.error("STT Error:", err);
+        setIsRecordingMic(null);
+      };
+
+      recognition.onend = () => {
+        setIsRecordingMic(null);
+      };
+
+      recognition.start();
+      setIsRecordingMic(qId);
+    } catch (err: any) {
+      alert("Microphone access error: " + err.message);
+      setIsRecordingMic(null);
+    }
+  };
+
   // active Countdown Timer Hook
   useEffect(() => {
     if (!examRunning || secondsRemaining <= 0) {
@@ -254,7 +371,8 @@ export default function AcuExam({
         alert("Please enter a custom Chapter / Topic name.");
         return;
       }
-      const startP = Math.max(1, customStartPage);
+      const parsedStart = parseInt(String(customStartPage), 10);
+      const startP = Math.max(1, isNaN(parsedStart) ? 1 : parsedStart);
       let selectedDoc = subjectDocs[0];
       if (!selectedDoc.pages || selectedDoc.pages.length === 0) {
         setLoading(true);
@@ -268,7 +386,8 @@ export default function AcuExam({
           return;
         }
       }
-      const endP = Math.min(selectedDoc.pages.length, customEndPage);
+      const parsedEnd = parseInt(String(customEndPage), 10);
+      const endP = Math.min(selectedDoc.pages.length, isNaN(parsedEnd) ? selectedDoc.pages.length : parsedEnd);
       if (startP > endP) {
         alert("Start page cannot be greater than end page.");
         return;
@@ -286,10 +405,15 @@ export default function AcuExam({
         const docSubject = selectedDoc.subject || "General";
         const isCustomMode = creationMode === "custom_builder";
         const customSpecs = isCustomMode 
-          ? activeCustomTypes.map(t => ({ type: t.name, count: t.count, marksPerQuestion: t.marksPerQuestion }))
+          ? activeCustomTypes.map(t => ({
+              type: t.name,
+              count: parseInt(String(t.count), 10) || 1,
+              marksPerQuestion: parseInt(String(t.marksPerQuestion), 10) || 1
+            }))
           : null;
         const paperTotalMarks = isCustomMode ? customTotalMarks : totalMarks;
         const paperBlueprint = isCustomMode ? null : activeBlueprint;
+        const finalDuration = parseInt(String(durationMinutes), 10) || 30;
 
         const examPaper = await generateExamPaper(
           textSlices, 
@@ -306,13 +430,13 @@ export default function AcuExam({
         examPaper.sections.forEach((sec: any) => { sec.questions.forEach((q: any) => { q.id = `q_${questionIndex}`; questionIndex++; }); });
         examPaper.title = examTitle;
         examPaper.maxMarks = paperTotalMarks;
-        examPaper.durationMinutes = durationMinutes;
+        examPaper.durationMinutes = finalDuration;
         examPaper.subject = docSubject;
         examPaper.documentId = selectedDoc.id;
         examPaper.chapterName = customChapterName.trim();
         setActiveExam(examPaper);
         setStudentAnswers({});
-        setSecondsRemaining(durationMinutes * 60);
+        setSecondsRemaining(finalDuration * 60);
         setExamRunning(true);
         setScorecard(null);
       } catch (err: any) {
@@ -329,8 +453,75 @@ export default function AcuExam({
       ? flatChapters
       : flatChapters.filter(c => selectedChapterKeys.includes(`${c.docId}_${c.chapIdx}`));
 
-    if (chaptersToUse.length === 0) {
-      alert("Please select at least one chapter, or enable \"Entire Subject\".");
+    // ── IELTS Global Test Paper Path (No user document required) ─────────────
+    if (selectedSubject.includes("IELTS") && chaptersToUse.length === 0) {
+      // 1. Frozen Benchmark Test Path (Cambridge 19)
+      if (ieltsSourceMode === "benchmark_corpus") {
+        setLoading(true);
+        setLoadingMessage("Loading Cambridge IELTS 19 Official Benchmark Test...");
+        setTimeout(() => {
+          setActiveExam(CAMBRIDGE_19_BENCHMARK_PAPER);
+          setStudentAnswers({});
+          setSecondsRemaining(120 * 60);
+          setExamRunning(true);
+          setScorecard(null);
+          setLoading(false);
+          setLoadingMessage("");
+        }, 400);
+        return;
+      }
+
+      // 2. Dynamic AI Generation Path
+      const activeModuleNames = Object.entries(ieltsModules)
+        .filter(([_, active]) => active)
+        .map(([key]) => key.charAt(0).toUpperCase() + key.slice(1))
+        .join(" & ");
+
+      setLoading(true);
+      setLoadingMessage(`Generating IELTS ${ieltsTrack} ${activeModuleNames || "Test"} Paper...`);
+      try {
+        const { blueprint: paperBlueprint, durationMinutes: targetDuration, totalMarks: paperTotalMarks } = buildIeltsModuleBlueprint(ieltsTrack, ieltsModules);
+        const paperBoard = `IELTS ${ieltsTrack}`;
+        const ieltsTextSlices = `[CAMBRIDGE IELTS 19 BENCHMARK STANDARDS]\n${ieltsTrack} Track (${activeModuleNames} Modules). Official test specifications: Reading passages, Writing Task 1 & 2 prompts, Listening dialogues, Speaking cue cards.`;
+
+        const examPaper = await generateExamPaper(
+          ieltsTextSlices,
+          `IELTS ${ieltsTrack} (${activeModuleNames}) Test`,
+          classGrade,
+          paperBoard,
+          distribution,
+          paperTotalMarks,
+          `IELTS (${ieltsTrack})`,
+          paperBlueprint,
+          null
+        );
+
+        let questionIndex = 1;
+        examPaper.sections.forEach((sec: any) => {
+          sec.questions.forEach((q: any) => {
+            q.id = `q_${questionIndex}`;
+            questionIndex++;
+          });
+        });
+
+        examPaper.title = `IELTS ${ieltsTrack} ${activeModuleNames || "Practice"} Test`;
+        examPaper.maxMarks = paperTotalMarks;
+        examPaper.durationMinutes = targetDuration;
+        examPaper.subject = `IELTS (${ieltsTrack})`;
+        examPaper.documentId = "ielts_global_corpus";
+        examPaper.chapterName = `${ieltsTrack} (${activeModuleNames || "Standard"}) Test`;
+
+        setActiveExam(examPaper);
+        setStudentAnswers({});
+        setSecondsRemaining(targetDuration * 60);
+        setExamRunning(true);
+        setScorecard(null);
+      } catch (err: any) {
+        alert("IELTS Generation failed: " + (err.message || String(err)));
+      } finally {
+        setLoading(false);
+        setLoadingMessage("");
+      }
       return;
     }
 
@@ -386,10 +577,15 @@ export default function AcuExam({
       const docSubject = selectedSubject || "General";
       const isCustomMode = creationMode === "custom_builder";
       const customSpecs = isCustomMode 
-        ? activeCustomTypes.map(t => ({ type: t.name, count: t.count, marksPerQuestion: t.marksPerQuestion }))
+        ? activeCustomTypes.map(t => ({
+            type: t.name,
+            count: parseInt(String(t.count), 10) || 1,
+            marksPerQuestion: parseInt(String(t.marksPerQuestion), 10) || 1
+          }))
         : null;
       const paperTotalMarks = isCustomMode ? customTotalMarks : totalMarks;
       const paperBlueprint = isCustomMode ? null : activeBlueprint;
+      const finalDuration = parseInt(String(durationMinutes), 10) || 30;
 
       const examPaper = await generateExamPaper(
         textSlices, 
@@ -413,14 +609,14 @@ export default function AcuExam({
 
       examPaper.title = examTitle;
       examPaper.maxMarks = paperTotalMarks;
-      examPaper.durationMinutes = durationMinutes;
+      examPaper.durationMinutes = finalDuration;
       examPaper.subject = docSubject;
       examPaper.documentId = chaptersToUse[0].docId;
       examPaper.chapterName = chapLabel;
 
       setActiveExam(examPaper);
       setStudentAnswers({});
-      setSecondsRemaining(durationMinutes * 60);
+      setSecondsRemaining(finalDuration * 60);
       setExamRunning(true);
       setScorecard(null);
     } catch (err: any) {
@@ -535,7 +731,7 @@ export default function AcuExam({
         chapterName: activeExam.chapterName,
         maxMarks: totalMarks,
         marksObtained: totalMarksObtained,
-        durationMinutes,
+        durationMinutes: typeof durationMinutes === "number" ? durationMinutes : (parseInt(String(durationMinutes), 10) || 30),
         date: new Date().toLocaleDateString(),
         bloomsAnalytics,
         answers: gradedAnswers
@@ -901,9 +1097,15 @@ export default function AcuExam({
                     <select
                       value={selectedSubject}
                       onChange={(e) => {
-                        setSelectedSubject(e.target.value);
+                        const val = e.target.value;
+                        setSelectedSubject(val);
                         setSelectedChapterKeys([]);
                         setSelectAllChapters(false);
+                        if (val.includes("IELTS")) {
+                          setSelectedBoardType(`IELTS ${ieltsTrack}`);
+                          setExamTitle("IELTS Practice Test");
+                          setClassGrade("Medium (Band 6.5 - 7.5)");
+                        }
                       }}
                       className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
                     >
@@ -912,13 +1114,13 @@ export default function AcuExam({
                         const count = documents
                           .filter(d => (d.subject || "General") === s)
                           .reduce((acc, d) => acc + (d.chapterMap?.length || 0), 0);
-                        return <option key={s} value={s}>{s} ({count} chapters available)</option>;
+                        return <option key={s} value={s}>{s} {count > 0 ? `(${count} chapters available)` : "(Default Global Subject)"}</option>;
                       })}
                     </select>
                   </div>
 
-                  {/* Chapter Search Filter (when not manual override) */}
-                  {!manualChapterOverride && selectedSubject && flatChapters.length > 0 && (
+                  {/* Chapter Search Filter (when not manual override & not IELTS default) */}
+                  {!manualChapterOverride && selectedSubject && !selectedSubject.includes("IELTS") && flatChapters.length > 0 && (
                     <div className="space-y-1.5 md:col-span-2 flex items-center gap-3">
                       <div className="flex-1">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Filter Chapters</label>
@@ -950,6 +1152,115 @@ export default function AcuExam({
                     </div>
                   )}
                 </div>
+
+                {/* IELTS Specific Controls Panel */}
+                {selectedSubject.includes("IELTS") && (
+                  <div className="p-4 sm:p-5 rounded-2xl border border-violet-500/30 bg-violet-950/20 space-y-4 text-left">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-violet-500/20 pb-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-violet-300 uppercase tracking-wider flex items-center gap-1.5">
+                          <span>🇬🇧 IELTS Cambridge Standard Test Track</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400 mt-0.5">Select test paper source, official module specs, and exam type.</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Test Paper Source Mode Switcher */}
+                        <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-xl shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setIeltsSourceMode("ai_generator")}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              ieltsSourceMode === "ai_generator"
+                                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            🤖 Fresh AI Test
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIeltsSourceMode("benchmark_corpus")}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              ieltsSourceMode === "benchmark_corpus"
+                                ? "bg-amber-600 text-white shadow-md shadow-amber-600/20"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            🎯 Cambridge 19 (ielts.md)
+                          </button>
+                        </div>
+
+                        {/* Academic vs General Track Switcher */}
+                        <div className="flex bg-slate-950 border border-slate-800 p-1 rounded-xl shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIeltsTrack("Academic");
+                              setSelectedBoardType("IELTS Academic");
+                            }}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              ieltsTrack === "Academic"
+                                ? "bg-violet-600 text-white shadow-md shadow-violet-600/20"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            🎓 Academic
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIeltsTrack("General");
+                              setSelectedBoardType("IELTS General");
+                            }}
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                              ieltsTrack === "General"
+                                ? "bg-emerald-600 text-white shadow-md shadow-emerald-600/20"
+                                : "text-slate-400 hover:text-slate-200"
+                            }`}
+                          >
+                            💼 General Training
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 4-Module Selector */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Target IELTS Modules</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        {[
+                          { id: "reading", label: "Reading Module", icon: "📖" },
+                          { id: "writing", label: "Writing Module", icon: "✍️" },
+                          { id: "listening", label: "Listening Module", icon: "🎧" },
+                          { id: "speaking", label: "Speaking Module", icon: "🗣️" },
+                        ].map((m) => {
+                          const checked = ieltsModules[m.id];
+                          return (
+                            <label
+                              key={m.id}
+                              className={`p-2.5 rounded-xl border cursor-pointer transition-all flex items-center gap-2 ${
+                                checked
+                                  ? "bg-violet-950/60 border-violet-500/60 text-white font-semibold shadow-md"
+                                  : "bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  setIeltsModules(prev => ({ ...prev, [m.id]: e.target.checked }));
+                                }}
+                                className="accent-violet-500 cursor-pointer w-4 h-4 shrink-0"
+                              />
+                              <span className="text-xs truncate">{m.icon} {m.label}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Chapter Cards Selection Area */}
                 {!manualChapterOverride ? (
@@ -1031,20 +1342,36 @@ export default function AcuExam({
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Start Page</label>
                       <input
-                        type="number"
-                        min={1}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={customStartPage}
-                        onChange={(e) => setCustomStartPage(Math.max(1, Number(e.target.value)))}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, "");
+                          setCustomStartPage(raw);
+                        }}
+                        onBlur={() => {
+                          const parsed = parseInt(String(customStartPage), 10);
+                          setCustomStartPage(isNaN(parsed) || parsed < 1 ? 1 : parsed);
+                        }}
                         className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">End Page</label>
                       <input
-                        type="number"
-                        min={1}
+                        type="text"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={customEndPage}
-                        onChange={(e) => setCustomEndPage(Math.max(1, Number(e.target.value)))}
+                        onChange={(e) => {
+                          const raw = e.target.value.replace(/[^0-9]/g, "");
+                          setCustomEndPage(raw);
+                        }}
+                        onBlur={() => {
+                          const parsed = parseInt(String(customEndPage), 10);
+                          setCustomEndPage(isNaN(parsed) || parsed < 1 ? 1 : parsed);
+                        }}
                         className="w-full bg-slate-900 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white outline-none"
                       />
                     </div>
@@ -1111,22 +1438,36 @@ export default function AcuExam({
                       </div>
 
                       <div className="space-y-1.5">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Grade Level</label>
-                        <select
-                          value={classGrade}
-                          onChange={(e) => setClassGrade(e.target.value)}
-                          className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
-                        >
-                          <option value="Grade 6">Grade 6</option>
-                          <option value="Grade 7">Grade 7</option>
-                          <option value="Grade 8">Grade 8</option>
-                          <option value="Grade 9">Grade 9</option>
-                          <option value="Grade 10">Grade 10</option>
-                          <option value="Grade 11">Grade 11</option>
-                          <option value="Grade 12">Grade 12</option>
-                          <option value="Undergraduate">College Level</option>
-                          <option value="Postgraduate">Postgraduate Level</option>
-                        </select>
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                          {selectedSubject.includes("IELTS") ? "Difficulty Level (Band Target)" : "Grade Level"}
+                        </label>
+                        {selectedSubject.includes("IELTS") ? (
+                          <select
+                            value={classGrade}
+                            onChange={(e) => setClassGrade(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-violet-500/50 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                          >
+                            <option value="Easy (Band 5.0 - 6.0)">🟢 Easy (Target Band 5.0 - 6.0)</option>
+                            <option value="Medium (Band 6.5 - 7.5)">🟡 Medium (Target Band 6.5 - 7.5)</option>
+                            <option value="Hard (Band 8.0 - 9.0)">🔴 Hard / Advanced (Target Band 8.0 - 9.0)</option>
+                          </select>
+                        ) : (
+                          <select
+                            value={classGrade}
+                            onChange={(e) => setClassGrade(e.target.value)}
+                            className="w-full bg-slate-950/80 border border-slate-800 focus:border-violet-500 rounded-xl py-2.5 px-3 text-xs font-semibold text-white outline-none cursor-pointer"
+                          >
+                            <option value="Grade 6">Grade 6</option>
+                            <option value="Grade 7">Grade 7</option>
+                            <option value="Grade 8">Grade 8</option>
+                            <option value="Grade 9">Grade 9</option>
+                            <option value="Grade 10">Grade 10</option>
+                            <option value="Grade 11">Grade 11</option>
+                            <option value="Grade 12">Grade 12</option>
+                            <option value="Undergraduate">College Level</option>
+                            <option value="Postgraduate">Postgraduate Level</option>
+                          </select>
+                        )}
                       </div>
 
                       <div className="space-y-1.5">
@@ -1141,25 +1482,33 @@ export default function AcuExam({
                     </div>
 
                     {/* Active Board Blueprint Preview */}
-                    {activeBlueprint && (
-                      <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/40 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="text-xs font-bold text-white flex items-center gap-2">
-                            <span>📋 {activeBlueprint.boardAbbreviation} {activeBlueprint.academicYear} Official Blueprint</span>
-                          </div>
-                          <span className="text-[10px] text-slate-500">Total Marks: {activeBlueprint.totalTheoryMarks}m · {activeBlueprint.totalQuestions} Questions</span>
-                        </div>
-                        <div className="flex flex-wrap gap-2 text-xs">
-                          {activeBlueprint.sections.map((sec) => (
-                            <div key={sec.sectionLetter} className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
-                              {sec.sectionLetter}: <span className="font-bold text-violet-400">
-                                {sec.questionTypes.map((qt) => `${qt.count} ${qt.type}`).join(" + ")}
-                              </span> = {sec.totalMarks}m
+                    {activeBlueprint && (() => {
+                      const displayBp = selectedSubject.includes("IELTS")
+                        ? buildIeltsModuleBlueprint(ieltsTrack, ieltsModules).blueprint
+                        : activeBlueprint;
+
+                      return (
+                        <div className="p-4 rounded-2xl border border-slate-800 bg-slate-950/40 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                            <div className="text-xs font-bold text-white flex items-center gap-2">
+                              <span>📋 {displayBp.boardAbbreviation} {displayBp.academicYear} Official Blueprint</span>
                             </div>
-                          ))}
+                            <span className="text-xs font-bold text-violet-400 bg-violet-950/40 border border-violet-500/20 px-2.5 py-1 rounded-lg">
+                              Total Marks: {displayBp.totalTheoryMarks}m · {displayBp.totalQuestions} Questions
+                            </span>
+                          </div>
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {displayBp.sections.map((sec) => (
+                              <div key={sec.sectionLetter} className="py-1 px-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">
+                                {sec.sectionLetter}: <span className="font-bold text-violet-400">
+                                  {sec.questionTypes.map((qt) => `${qt.count} ${qt.type}`).join(" + ")}
+                                </span> = {sec.totalMarks}m
+                              </div>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 ) : (
                   /* MODE B: CUSTOM QUESTION PAPER BUILDER */
@@ -1194,14 +1543,98 @@ export default function AcuExam({
                       </div>
                     </div>
 
-                    {/* Interactive Question Types Builder Table */}
+                    {/* Interactive Question Types Builder */}
                     <div className="space-y-3">
                       <div className="flex justify-between items-center text-xs font-bold text-slate-400 uppercase tracking-wider">
                         <span>Select Question Types & Marking Scheme</span>
                         <span>{activeCustomTypes.length} Types Selected</span>
                       </div>
 
-                      <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/60">
+                      {/* Mobile Card Stack Layout (< sm) */}
+                      <div className="space-y-3 sm:hidden">
+                        {customQuestionTypes.map((qType) => {
+                          const countVal = parseInt(String(qType.count), 10) || 0;
+                          const marksVal = parseInt(String(qType.marksPerQuestion), 10) || 0;
+                          const subtotal = countVal * marksVal;
+                          return (
+                            <div
+                              key={qType.id}
+                              className={`p-4 rounded-2xl border transition-all space-y-3 ${
+                                qType.enabled
+                                  ? "bg-slate-900/60 border-slate-700 shadow-md"
+                                  : "bg-slate-950/40 border-slate-800/80 opacity-60"
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <label className="flex items-start gap-3 cursor-pointer flex-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={qType.enabled}
+                                    onChange={(e) => {
+                                      const checked = e.target.checked;
+                                      setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, enabled: checked } : t));
+                                    }}
+                                    className="accent-emerald-500 cursor-pointer w-4 h-4 mt-0.5 shrink-0"
+                                  />
+                                  <div>
+                                    <p className="font-bold text-white text-xs">{qType.name}</p>
+                                    <p className="text-[10px] text-slate-400 leading-relaxed mt-0.5">{qType.description}</p>
+                                  </div>
+                                </label>
+                                <span className={`font-mono text-xs font-bold shrink-0 ${qType.enabled ? "text-emerald-400" : "text-slate-600"}`}>
+                                  {qType.enabled ? `${subtotal} Marks` : "—"}
+                                </span>
+                              </div>
+
+                              {qType.enabled && (
+                                <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-800/60">
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">No. of Questions</label>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      value={qType.count}
+                                      onChange={(e) => {
+                                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: raw } : t));
+                                      }}
+                                      onBlur={() => {
+                                        const parsed = parseInt(String(qType.count), 10);
+                                        const finalVal = isNaN(parsed) || parsed < 1 ? 1 : Math.min(50, parsed);
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: finalVal } : t));
+                                      }}
+                                      className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl p-2 text-center text-xs font-bold text-white outline-none"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Marks / Question</label>
+                                    <input
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
+                                      value={qType.marksPerQuestion}
+                                      onChange={(e) => {
+                                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: raw } : t));
+                                      }}
+                                      onBlur={() => {
+                                        const parsed = parseInt(String(qType.marksPerQuestion), 10);
+                                        const finalVal = isNaN(parsed) || parsed < 1 ? 1 : Math.min(20, parsed);
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: finalVal } : t));
+                                      }}
+                                      className="w-full bg-slate-950 border border-slate-700 focus:border-emerald-500 rounded-xl p-2 text-center text-xs font-bold text-white outline-none"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Desktop Table Layout (>= sm) */}
+                      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/60">
                         <table className="w-full text-left border-collapse">
                           <thead>
                             <tr className="bg-slate-900/60 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
@@ -1214,7 +1647,9 @@ export default function AcuExam({
                           </thead>
                           <tbody className="divide-y divide-slate-800/60 text-xs">
                             {customQuestionTypes.map((qType) => {
-                              const subtotal = (qType.count || 0) * (qType.marksPerQuestion || 0);
+                              const countVal = parseInt(String(qType.count), 10) || 0;
+                              const marksVal = parseInt(String(qType.marksPerQuestion), 10) || 0;
+                              const subtotal = countVal * marksVal;
                               return (
                                 <tr key={qType.id} className={qType.enabled ? "bg-slate-900/30" : "opacity-60"}>
                                   <td className="p-3 text-center">
@@ -1234,28 +1669,38 @@ export default function AcuExam({
                                   </td>
                                   <td className="p-3">
                                     <input
-                                      type="number"
-                                      min={1}
-                                      max={50}
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
                                       disabled={!qType.enabled}
                                       value={qType.count}
                                       onChange={(e) => {
-                                        const val = Math.max(1, Number(e.target.value));
-                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: val } : t));
+                                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: raw } : t));
+                                      }}
+                                      onBlur={() => {
+                                        const parsed = parseInt(String(qType.count), 10);
+                                        const finalVal = isNaN(parsed) || parsed < 1 ? 1 : Math.min(50, parsed);
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, count: finalVal } : t));
                                       }}
                                       className="w-20 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg p-1.5 text-center font-bold text-white outline-none disabled:opacity-30"
                                     />
                                   </td>
                                   <td className="p-3">
                                     <input
-                                      type="number"
-                                      min={1}
-                                      max={20}
+                                      type="text"
+                                      inputMode="numeric"
+                                      pattern="[0-9]*"
                                       disabled={!qType.enabled}
                                       value={qType.marksPerQuestion}
                                       onChange={(e) => {
-                                        const val = Math.max(1, Number(e.target.value));
-                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: val } : t));
+                                        const raw = e.target.value.replace(/[^0-9]/g, "");
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: raw } : t));
+                                      }}
+                                      onBlur={() => {
+                                        const parsed = parseInt(String(qType.marksPerQuestion), 10);
+                                        const finalVal = isNaN(parsed) || parsed < 1 ? 1 : Math.min(20, parsed);
+                                        setCustomQuestionTypes(prev => prev.map(t => t.id === qType.id ? { ...t, marksPerQuestion: finalVal } : t));
                                       }}
                                       className="w-20 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-lg p-1.5 text-center font-bold text-white outline-none disabled:opacity-30"
                                     />
@@ -1290,10 +1735,18 @@ export default function AcuExam({
                       <div className="space-y-1 w-full sm:w-auto">
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Test Duration (Minutes)</label>
                         <input
-                          type="number"
-                          min={5}
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={durationMinutes}
-                          onChange={(e) => setDurationMinutes(Math.max(5, Number(e.target.value)))}
+                          onChange={(e) => {
+                            const raw = e.target.value.replace(/[^0-9]/g, "");
+                            setDurationMinutes(raw);
+                          }}
+                          onBlur={() => {
+                            const parsed = parseInt(String(durationMinutes), 10);
+                            setDurationMinutes(isNaN(parsed) || parsed < 5 ? 5 : parsed);
+                          }}
                           className="w-full sm:w-36 bg-slate-900 border border-slate-700 focus:border-emerald-500 rounded-xl p-2 text-xs font-bold text-white outline-none"
                         />
                       </div>
@@ -1307,8 +1760,9 @@ export default function AcuExam({
                     onClick={handleGenerateExam}
                     disabled={
                       !selectedSubject ||
-                      (!manualChapterOverride && selectedChapterKeys.length === 0 && !selectAllChapters) ||
-                      (manualChapterOverride && !customChapterName.trim()) ||
+                      (!selectedSubject.includes("IELTS") && !manualChapterOverride && selectedChapterKeys.length === 0 && !selectAllChapters) ||
+                      (!selectedSubject.includes("IELTS") && manualChapterOverride && !customChapterName.trim()) ||
+                      (selectedSubject.includes("IELTS") && !Object.values(ieltsModules).some(Boolean)) ||
                       (creationMode === "custom_builder" && activeCustomTypes.length === 0)
                     }
                     className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-violet-600 via-purple-600 to-emerald-600 hover:from-violet-500 hover:to-emerald-500 text-white font-bold text-sm shadow-xl shadow-violet-600/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer flex items-center justify-center gap-2"
@@ -1317,6 +1771,92 @@ export default function AcuExam({
                   </button>
                 </div>
               </div>
+
+              {/* -------------------------------------------------------------
+                  STEP 3: PAST COMPLETED TESTS & REVIEW LOG
+                 ------------------------------------------------------------- */}
+              {attempts && attempts.length > 0 && (
+                <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-slate-800 space-y-6 text-left">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+                    <div>
+                      <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-950/40 border border-violet-500/25 text-violet-400 text-[10px] font-bold uppercase tracking-wider mb-1">
+                        <Award size={12} />
+                        Test History & Review Log
+                      </div>
+                      <h3 className="text-xl font-bold text-white">Revisit Completed Tests ({attempts.length})</h3>
+                      <p className="text-slate-400 text-xs">
+                        Click any past attempt to review your full scorecard, AI feedback, model answers, and export PDF papers.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {attempts.map((attempt) => {
+                      const percent = attempt.maxMarks > 0 ? Math.round((attempt.marksObtained / attempt.maxMarks) * 100) : 0;
+                      const isPassed = percent >= 40;
+
+                      return (
+                        <div
+                          key={attempt.id}
+                          className="p-5 rounded-2xl border border-slate-800 bg-slate-950/60 hover:bg-slate-900/40 hover:border-slate-700 transition-all text-left flex flex-col justify-between gap-4 group"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-violet-400 bg-violet-950/40 border border-violet-500/20 px-2 py-0.5 rounded">
+                                  📚 {attempt.subject || "General"}
+                                </span>
+                                <h4 className="text-sm font-bold text-white mt-1.5 group-hover:text-violet-300 transition-colors">
+                                  {attempt.examTitle}
+                                </h4>
+                                <p className="text-[11px] text-slate-400 line-clamp-1">
+                                  {attempt.chapterName || "Mixed Syllabus"}
+                                </p>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                                  isPassed
+                                    ? "bg-emerald-950/40 border-emerald-500/30 text-emerald-400"
+                                    : "bg-red-950/40 border-red-500/30 text-red-400"
+                                }`}>
+                                  {percent}% ({attempt.marksObtained}/{attempt.maxMarks}m)
+                                </span>
+                                <span className="text-[10px] text-slate-500 block mt-1">{attempt.date}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-3 border-t border-slate-900 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setScorecard(attempt)}
+                              className="flex-1 py-2 px-3 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-violet-600/10"
+                            >
+                              <FileText size={14} />
+                              <span>Review Scorecard</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                if (confirm(`Delete results for "${attempt.examTitle}"?`)) {
+                                  await dbService.deleteExamAttempt(activeProfileId, attempt.id);
+                                  onRefresh();
+                                }
+                              }}
+                              className="p-2 rounded-xl border border-slate-800 hover:border-red-900/40 text-slate-500 hover:text-red-400 transition-colors cursor-pointer"
+                              title="Delete attempt record"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1343,40 +1883,42 @@ export default function AcuExam({
           ) : (
             <>
               {/* Top Sticky Timer Bar */}
-              <div className="flex items-center justify-between border-b border-slate-900 pb-4 sticky top-[72px] bg-[#0b0c10]/95 backdrop-blur-md py-2 z-20">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-900 pb-4 sticky top-[72px] bg-[#0b0c10]/95 backdrop-blur-md py-3 px-2 z-20 gap-3 shadow-lg">
                 <div>
-              <h3 className="text-lg font-bold text-white">{activeExam.title}</h3>
-              <p className="text-xs text-slate-500">{activeBlueprint ? `${activeBlueprint.boardAbbreviation} ${activeBlueprint.academicYear} Blueprint` : "Board Standard Exam Blueprint"}</p>
-            </div>
-            
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleExportExamPDF}
-                className="py-2 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <Download size={14} /> Export PDF
-              </button>
-              <button
-                onClick={handlePauseToggle}
-                className="py-2 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-              >
-                {examRunning ? "Pause Exam" : "Resume Exam"}
-              </button>
-              <button
-                onClick={() => setShowQuitPrompt(true)}
-                className="py-2 px-3 bg-red-950/20 border border-red-900/35 text-red-400 hover:bg-red-900 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Quit Exam
-              </button>
-              <div className="flex items-center gap-2 py-2 px-4 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-400 font-display font-bold">
-                <Timer size={18} />
-                <span>{formatTimer(secondsRemaining)}</span>
+                  <h3 className="text-base sm:text-lg font-bold text-white leading-tight">{activeExam.title}</h3>
+                  <p className="text-xs font-semibold text-violet-400 mt-0.5">
+                    {activeBlueprint ? `${activeBlueprint.boardAbbreviation} ${activeBlueprint.academicYear} Standard Blueprint` : "Board Standard Exam Blueprint"}
+                  </p>
+                </div>
+                
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleExportExamPDF}
+                    className="py-1.5 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Download size={14} /> Export PDF
+                  </button>
+                  <button
+                    onClick={handlePauseToggle}
+                    className="py-1.5 px-3 border border-slate-800 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    {examRunning ? "Pause Exam" : "Resume Exam"}
+                  </button>
+                  <button
+                    onClick={() => setShowQuitPrompt(true)}
+                    className="py-1.5 px-3 bg-red-950/20 border border-red-900/35 text-red-400 hover:bg-red-900 hover:text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Quit Exam
+                  </button>
+                  <div className="flex items-center gap-2 py-1.5 px-3.5 rounded-xl border border-amber-500/20 bg-amber-950/20 text-amber-400 font-display font-bold text-xs sm:text-sm">
+                    <Timer size={16} />
+                    <span>{formatTimer(secondsRemaining)}</span>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
 
-          {/* Exam Questions Form */}
-          <div className="relative">
+              {/* Exam Questions Form Container with Top Clearance Spacing */}
+              <div className="relative pt-4">
             {!examRunning && (
               <div className="absolute inset-0 z-30 bg-[#0b0c10]/95 backdrop-blur-md flex flex-col items-center justify-center p-8 rounded-2xl border border-slate-850">
                 <AlertCircle className="text-amber-400 mb-2" size={32} />
@@ -1398,24 +1940,91 @@ export default function AcuExam({
               if (sec.questions.length === 0) return null;
               return (
                 <div key={sec.section_letter} className="space-y-4">
-                  <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/30">
-                    <h4 className="text-sm font-bold text-white uppercase tracking-wider">
-                      Section {sec.section_letter}: ({sec.marks_per_question}m each)
-                    </h4>
-                    <p className="text-[10px] text-slate-500 mt-1">{sec.instructions}</p>
+                  <div className="p-3 rounded-xl border border-slate-800 bg-slate-950/30 text-left">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                        Section {sec.section_letter}: ({sec.marks_per_question}m each)
+                      </h4>
+                      {/* Listening Audio Synthesis Player Button */}
+                      {(sec.sectionTitle?.toLowerCase().includes("listening") || sec.instructions?.toLowerCase().includes("audio") || sec.instructions?.toLowerCase().includes("transcript")) && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleListeningAudio(`sec_${sec.section_letter}`, sec.instructions)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                            isPlayingAudio && activeAudioQuestionId === `sec_${sec.section_letter}`
+                              ? "bg-amber-600 text-white animate-pulse"
+                              : "bg-violet-950/60 border border-violet-500/30 text-violet-300 hover:bg-violet-900 hover:text-white"
+                          }`}
+                        >
+                          {isPlayingAudio && activeAudioQuestionId === `sec_${sec.section_letter}` ? (
+                            <>
+                              <Pause size={12} />
+                              <span>Pause Audio Track</span>
+                            </>
+                          ) : (
+                            <>
+                              <Volume2 size={12} className="text-emerald-400" />
+                              <span>🔊 Play Audio Listening Track</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                    {sec.instructions && (
+                      <div className="mt-1.5">
+                        {sec.instructions.length > 250 ? (
+                          <div className="p-3 bg-slate-900/60 rounded-xl border border-slate-800 space-y-1 text-left">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-violet-400 uppercase tracking-wider">
+                              <span>📖 Section Instructions / Audio Transcript</span>
+                              <span className="text-[9px] text-slate-500 font-normal">↕ Scroll to read</span>
+                            </div>
+                            <div className="max-h-[220px] overflow-y-auto text-xs text-slate-300 leading-relaxed whitespace-pre-wrap pr-1">
+                              {sec.instructions}
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-slate-500">{sec.instructions}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-6">
-                    {sec.questions.map((q: any) => (
-                      <div key={q.id} className="space-y-3 p-4 rounded-xl bg-slate-950/20 border border-slate-900/60">
-                        <div className="flex justify-between items-start gap-4">
-                          <h5 className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
-                            {q.question_text}
-                          </h5>
-                          <span className="text-[10px] font-bold text-violet-400 bg-violet-950/40 border border-violet-500/20 px-2 py-0.5 rounded uppercase shrink-0">
-                            {q.marks} Mark
-                          </span>
-                        </div>
+                    {sec.questions.map((q: any) => {
+                      const qText = q.question_text || "";
+                      const lowerText = qText.toLowerCase();
+                      const isLongPassage = qText.length > 280 || lowerText.includes("passage") || lowerText.includes("reading excerpt");
+
+                      return (
+                        <div key={q.id} className="space-y-3 p-4 rounded-xl bg-slate-950/20 border border-slate-900/60 text-left">
+                          <div className="flex justify-between items-start gap-4">
+                            <div className="flex-1">
+                              {isLongPassage ? (
+                                <div className="space-y-3 w-full">
+                                  <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4 space-y-2 text-left shadow-inner">
+                                    <div className="flex items-center justify-between text-[10px] font-bold text-violet-400 uppercase tracking-wider border-b border-slate-800/80 pb-2">
+                                      <span className="flex items-center gap-1.5">
+                                        <span>📖 IELTS Reading / Reference Passage</span>
+                                      </span>
+                                      <span className="text-[9px] text-slate-500 font-normal px-2 py-0.5 rounded bg-slate-900 border border-slate-800">
+                                        ↕ Scroll to read
+                                      </span>
+                                    </div>
+                                    <div className="max-h-[260px] sm:max-h-[320px] overflow-y-auto pr-2 text-xs sm:text-sm text-slate-200 leading-relaxed font-sans whitespace-pre-wrap select-text">
+                                      {qText}
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <h5 className="text-xs sm:text-sm font-semibold text-white leading-relaxed">
+                                  {qText}
+                                </h5>
+                              )}
+                            </div>
+                            <span className="text-[10px] font-bold text-violet-400 bg-violet-950/40 border border-violet-500/20 px-2 py-0.5 rounded uppercase shrink-0">
+                              {q.marks} Mark
+                            </span>
+                          </div>
 
                         {/* RENDER INPUT BASED ON TYPE */}
                         {q.question_type === "MCQ" ? (
@@ -1449,14 +2058,38 @@ export default function AcuExam({
                             <textarea
                               value={studentAnswers[q.id] || ""}
                               onChange={(e) => setStudentAnswers({ ...studentAnswers, [q.id]: e.target.value })}
-                              placeholder="Write your answer here..."
+                              placeholder="Write or dictate your answer here..."
                               rows={q.marks > 3 ? 5 : 3}
                               className="w-full bg-slate-950/40 border border-slate-800 focus:border-violet-500 rounded-xl py-2 px-3 text-xs text-white placeholder-slate-700 outline-none resize-none"
                               disabled={!!studentAnswerImages[q.id]}
                             />
                             
-                            <div className="flex items-center gap-2 pt-1">
-                              <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">Or</span>
+                            <div className="flex flex-wrap items-center gap-2 pt-1">
+                              {/* Speaking Voice Mic STT Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleToggleMicRecording(q.id)}
+                                className={`flex items-center gap-1.5 py-1 px-3 rounded-lg text-[10px] font-semibold transition-all cursor-pointer border ${
+                                  isRecordingMic === q.id
+                                    ? "bg-red-600 border-red-500 text-white animate-pulse shadow-md shadow-red-600/30"
+                                    : "bg-violet-950/40 border-violet-500/25 hover:bg-violet-900 text-violet-300 hover:text-white"
+                                }`}
+                              >
+                                {isRecordingMic === q.id ? (
+                                  <>
+                                    <MicOff size={12} />
+                                    <span>Stop Mic Recording</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Mic size={12} className="text-red-400" />
+                                    <span>🎙️ Speak Answer (Mic STT)</span>
+                                  </>
+                                )}
+                              </button>
+
+                              <span className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Or</span>
+
                               <div className="relative">
                                 <input
                                   type="file"
@@ -1501,7 +2134,7 @@ export default function AcuExam({
                                 />
                                 <label
                                   htmlFor={`handwritten-file-upload-${q.id}`}
-                                  className="flex items-center gap-1.5 py-1 px-3 border border-violet-500/25 bg-violet-950/20 hover:bg-violet-900 text-violet-400 hover:text-white rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
+                                  className="flex items-center gap-1.5 py-1 px-3 border border-slate-800 bg-slate-950/60 hover:bg-slate-900 text-slate-300 rounded-lg text-[10px] font-semibold transition-all cursor-pointer"
                                 >
                                   📷 Upload Handwritten Answer Sheet
                                 </label>
@@ -1538,7 +2171,8 @@ export default function AcuExam({
                           </div>
                         )}
                       </div>
-                    ))}
+                    );
+                  })}
                   </div>
                 </div>
               );
@@ -1731,9 +2365,21 @@ export default function AcuExam({
                   
                   {/* Heading header */}
                   <div className="flex justify-between items-start gap-4">
-                    <div className="space-y-1">
+                    <div className="space-y-1 flex-1">
                       <h4 className="text-xs font-bold text-slate-400">Question {idx + 1} ({ans.bloomsLevel})</h4>
-                      <p className="text-xs text-white leading-relaxed">{ans.questionText}</p>
+                      {ans.questionText && ans.questionText.length > 280 ? (
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 space-y-1.5 text-left mt-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-violet-400 uppercase tracking-wider border-b border-slate-800/80 pb-1">
+                            <span>📖 Reference Passage / Text</span>
+                            <span className="text-[9px] text-slate-500 font-normal">↕ Scroll passage</span>
+                          </div>
+                          <div className="max-h-[220px] overflow-y-auto text-xs text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">
+                            {ans.questionText}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-white leading-relaxed">{ans.questionText}</p>
+                      )}
                     </div>
                     <span className={`text-xs font-bold px-2 py-0.5 rounded border whitespace-nowrap ${
                       ans.marksAwarded === ans.maxMarks 

@@ -569,6 +569,10 @@ export async function generateExamPaper(
     prompt = `Generate a question paper titled "${examTitle}" for ${grade} (${board} standard).\n\n[SECTIONS TO INCLUDE]\n${sectionsInstructions.join("\n")}\n\n${subjectRules}\n\n[CONTEXT PASSAGES]\n${sourceText}`;
   }
 
+  if (grade.includes("Band")) {
+    prompt += `\n\n[IELTS DIFFICULTY LEVEL — ${grade}]\nAdjust reading passage vocabulary density, sentence complexity, graph analysis depth, and distractor difficulty strictly matching target level: ${grade}.`;
+  }
+
   const text = await callAI({
     contents: [{ text: EXAM_SYSTEM_PROMPT }, { text: prompt }],
     temperature: 0.2,
@@ -580,7 +584,45 @@ export async function generateExamPaper(
 // 4. AcuExam Grader Prompt
 // -------------------------------------------------------------
 function buildGraderSystemPrompt(gradingStandard: string = "CBSE Board"): string {
-  return `You are an objective ${gradingStandard} examiner grading student answers.\nAnalyze the student's answer against the Model Answer and the step-by-step Grading Rubric.\nAllocate marks precisely based on the rubric guidelines (decimal values like 0.5 increments are allowed, from 0 to max_marks).\nProvide an objective justification explaining exactly why marks were awarded or deducted.\nOutput strictly a single valid JSON object.\n\nJSON Schema:\n{\n  "marks_awarded": 2.5,\n  "justification": "Explanation of score allocation",\n  "feedback_details": {\n    "correct_points": ["Aspects student answered correctly"],\n    "incorrect_points": ["Missing key details or errors"],\n    "suggestions": ["Actionable study tips to improve"]\n  }\n}`;
+  if (gradingStandard.includes("IELTS")) {
+    return `You are an official Cambridge IELTS Band 9 Examiner grading candidate responses.
+Evaluate student answers according to official IELTS Band Descriptors (0.0 to 9.0 Band scale) across the 4 key criteria:
+1. Task Achievement / Task Response (Word count & full task prompt coverage)
+2. Coherence & Cohesion (Paragraphing & logical flow)
+3. Lexical Resource (Vocabulary range & precision)
+4. Grammatical Range & Accuracy (Complex structures & punctuation)
+
+Allocate marks precisely on the 0.0 to 9.0 Band scale (in 0.5 increments). Provide objective justifications and actionable study advice.
+Output strictly a single valid JSON object.
+
+JSON Schema:
+{
+  "marks_awarded": 7.5,
+  "justification": "Band 7.5: Strong task response with good paragraph cohesion and rich vocabulary.",
+  "feedback_details": {
+    "correct_points": ["Well-structured paragraphing and effective vocabulary variety."],
+    "incorrect_points": ["Minor grammatical inaccuracies in complex passive clauses."],
+    "suggestions": ["Vary sentence openers in Task 2 to reach Band 8.0."]
+  }
+}`;
+  }
+
+  return `You are an objective ${gradingStandard} examiner grading student answers.
+Analyze the student's answer against the Model Answer and the step-by-step Grading Rubric.
+Allocate marks precisely based on the rubric guidelines (decimal values like 0.5 increments are allowed, from 0 to max_marks).
+Provide an objective justification explaining exactly why marks were awarded or deducted.
+Output strictly a single valid JSON object.
+
+JSON Schema:
+{
+  "marks_awarded": 2.5,
+  "justification": "Explanation of score allocation",
+  "feedback_details": {
+    "correct_points": ["Aspects student answered correctly"],
+    "incorrect_points": ["Missing key details or errors"],
+    "suggestions": ["Actionable study tips to improve"]
+  }
+}`;
 }
 
 export async function gradeWrittenAnswer(

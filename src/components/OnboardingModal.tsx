@@ -77,6 +77,17 @@ export default function OnboardingModal({ userId, onClose }: OnboardingModalProp
     return () => clearTimeout(t);
   }, []);
 
+  // Keyboard Escape dismissal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleDismiss(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const handleDismiss = (dontShowAgain: boolean) => {
     if (dontShowAgain) {
       localStorage.setItem(`acu_onboarding_seen_${userId}`, "true");
@@ -87,13 +98,16 @@ export default function OnboardingModal({ userId, onClose }: OnboardingModalProp
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-300 ${
+      onClick={(e) => {
+        if (e.target === e.currentTarget) handleDismiss(false);
+      }}
+      className={`fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 transition-all duration-300 ${
         visible ? "opacity-100" : "opacity-0"
       }`}
-      style={{ backgroundColor: "rgba(0,0,0,0.80)", backdropFilter: "blur(8px)" }}
+      style={{ backgroundColor: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)" }}
     >
       <div
-        className={`relative w-full max-w-5xl rounded-3xl border border-slate-800 bg-[#0d0e14] shadow-2xl shadow-black/60 overflow-hidden transition-all duration-300 ${
+        className={`relative w-full max-w-5xl max-h-[92vh] sm:max-h-[85vh] flex flex-col rounded-2xl sm:rounded-3xl border border-slate-800 bg-[#0d0e14] shadow-2xl shadow-black/80 overflow-hidden transition-all duration-300 ${
           visible ? "scale-100 translate-y-0" : "scale-95 translate-y-4"
         }`}
       >
@@ -101,36 +115,41 @@ export default function OnboardingModal({ userId, onClose }: OnboardingModalProp
         <div className="absolute top-0 left-1/4 w-80 h-80 bg-violet-600/8 blur-[100px] pointer-events-none" />
         <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-emerald-600/6 blur-[100px] pointer-events-none" />
 
-        {/* Header */}
-        <div className="relative flex items-start justify-between p-6 pb-0">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-950/40 border border-violet-500/25 text-violet-400 text-[10px] font-bold uppercase tracking-wider mb-3">
+        {/* Sticky Header with prominent Close Button */}
+        <div className="relative flex-shrink-0 flex items-start justify-between p-4 sm:p-6 border-b border-slate-800/60 bg-[#0d0e14]/95 backdrop-blur-md z-20">
+          <div className="pr-8 sm:pr-12">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-violet-950/40 border border-violet-500/25 text-violet-400 text-[10px] font-bold uppercase tracking-wider mb-2 sm:mb-3">
               <Sparkles size={10} />
               Welcome to Acu
             </div>
-            <h2 className="text-2xl sm:text-3xl font-display font-extrabold text-white leading-tight">
+            <h2 className="text-xl sm:text-3xl font-display font-extrabold text-white leading-tight">
               Your complete AI study workflow
             </h2>
-            <p className="text-slate-400 text-sm mt-1">
+            <p className="text-slate-400 text-xs sm:text-sm mt-1">
               Here's how Acu works — follow these four steps to supercharge your studies.
             </p>
           </div>
+
+          {/* Touch-friendly Close Button always visible on mobile & desktop */}
           <button
+            type="button"
             onClick={() => handleDismiss(false)}
-            className="ml-4 p-2 rounded-xl text-slate-500 hover:text-white hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+            aria-label="Close onboarding modal"
+            title="Close"
+            className="p-2 sm:p-2.5 rounded-full sm:rounded-xl bg-slate-900/90 border border-slate-700/70 text-slate-300 hover:text-white hover:bg-slate-800 hover:border-slate-600 transition-all shrink-0 cursor-pointer shadow-lg active:scale-95 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
           >
-            <X size={18} />
+            <X size={20} className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Step Cards */}
-        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Scrollable Step Cards Content */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {STEPS.map((step, i) => {
             const Icon = step.icon;
             const isActive = activeStep === i;
             return (
               <div key={i} className="relative flex flex-col">
-                {/* Arrow connector (hidden on last) */}
+                {/* Arrow connector (hidden on last card) */}
                 {i < STEPS.length - 1 && (
                   <div className="hidden lg:flex absolute -right-2.5 top-1/2 -translate-y-1/2 z-10 items-center justify-center w-5 h-5">
                     <ChevronRight size={16} className="text-slate-600" />
@@ -188,33 +207,37 @@ export default function OnboardingModal({ userId, onClose }: OnboardingModalProp
         </div>
 
         {/* Step indicator dots (mobile) */}
-        <div className="flex justify-center gap-1.5 sm:hidden px-6 pb-2">
+        <div className="flex-shrink-0 flex justify-center gap-1.5 sm:hidden px-4 pb-2 bg-[#0d0e14]">
           {STEPS.map((_, i) => (
             <button
               key={i}
+              type="button"
               onClick={() => setActiveStep(i)}
-              className={`w-2 h-2 rounded-full transition-all cursor-pointer ${
-                activeStep === i ? "bg-violet-500 w-4" : "bg-slate-700"
+              aria-label={`Go to step ${i + 1}`}
+              className={`h-2 rounded-full transition-all cursor-pointer ${
+                activeStep === i ? "bg-violet-500 w-5" : "bg-slate-700 w-2"
               }`}
             />
           ))}
         </div>
 
-        {/* Footer */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-6 py-4 border-t border-slate-900 bg-slate-950/40">
-          <p className="text-[11px] text-slate-600 text-center sm:text-left">
+        {/* Sticky Footer */}
+        <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 p-4 sm:px-6 sm:py-4 border-t border-slate-900 bg-slate-950/90 z-20">
+          <p className="text-[11px] text-slate-500 text-center sm:text-left">
             You can revisit this guide anytime from the Help section.
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between sm:justify-end w-full sm:w-auto gap-3">
             <button
+              type="button"
               onClick={() => handleDismiss(true)}
-              className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors cursor-pointer py-1.5 px-2"
             >
               Don't show again
             </button>
             <button
+              type="button"
               onClick={() => handleDismiss(false)}
-              className="px-5 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold tracking-wide transition-colors cursor-pointer shadow-lg shadow-violet-600/20"
+              className="px-5 py-2.5 bg-violet-600 hover:bg-violet-500 text-white rounded-xl text-xs font-bold tracking-wide transition-colors cursor-pointer shadow-lg shadow-violet-600/20 active:scale-95"
             >
               Got it, let's start →
             </button>
